@@ -4,6 +4,7 @@
 
 import bpy
 import time
+from mathutils import Vector
 from bpy.app.handlers import persistent
 
 bl_info = {
@@ -107,6 +108,20 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
         unit='LENGTH'
     )
     
+    # Collision settings
+    enable_collision: bpy.props.BoolProperty(
+        name="Enable Collision",
+        description="Enable collision detection with objects tagged as 'smb_collision'",
+        default=True
+    )
+    
+    collision_padding: bpy.props.FloatProperty(
+        name="Collision Padding",
+        description="Extra padding around collision boxes",
+        default=0.01,
+        min=0.0
+    )
+    
     # Customizable physics values (defaulting to accurate SMB values)
     gravity: bpy.props.FloatProperty(
         name="Gravity",
@@ -199,7 +214,135 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
 
 
 class SMBPhysicsEngine:
-    """Core physics engine implementing SMB physics"""
+    """Core physics engine implementing SMB physics with collision detection"""
+    
+    @staticmethod
+    def get_object_bounds(obj):
+        """Get AABB (Axis-Aligned Bounding Box) for an object in world space"""
+        # Get the bounding box corners in local space
+        bbox_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+        
+        # Find min/max for each axis
+        min_x = min(corner.x for corner in bbox_corners)
+        max_x = max(corner.x for corner in bbox_corners)
+        min_y = min(corner.y for corner in bbox_corners)
+        max_y = max(corner.y for corner in bbox_corners)
+        min_z = min(corner.z for corner in bbox_corners)
+        max_z = max(corner.z for corner in bbox_corners)
+        
+        return (min_x, max_x, min_y, max_y, min_z, max_z)
+    
+    @staticmethod
+    def check_aabb_collision(bounds1, bounds2):
+        """Check if two AABBs are colliding"""
+        min_x1, max_x1, min_y1, max_y1, min_z1, max_z1 = bounds1
+        min_x2, max_x2, min_y2, max_y2, min_z2, max_z2 = bounds2
+        
+        return (min_x1 <= max_x2 and max_x1 >= min_x2 and
+                min_y1 <= max_y2 and max_y1 >= min_y2 and
+                min_z1 <= max_z2 and max_z1 >= min_z2)
+    
+    @staticmethod
+    def get_collision_objects(context, player_obj):
+        """Get all objects tagged for collision (name contains 'smb_collision' or has custom property)"""
+        collision_objects = []
+        for obj in context.scene.objects:
+            if obj == player_obj:
+                continue
+            # Check if object is tagged for collision
+            if 'smb_collision' in obj.name.lower() or obj.get('smb_collision', False):
+                collision_objects.append(obj)
+        return collision_objects
+    
+    @staticmethod
+    def resolve_collision(player_bounds, obstacle_bounds, velocity, forward_axis, up_axis):
+        """
+        Resolve collision between player and obstacle.
+        Returns: (new_pos_offset, new_velocity, is_grounded_on_top)
+        
+        SMB-style collision resolution:
+        - Landing on top of objects (like platforms/blocks)
+        - Hitting head on bottom of objects
+        - Horizontal wall collision
+        """
+        p_min_x, p_max_x, p_min_y, p_max_y, p_min_z, p_max_z = player_bounds
+        o_min_x, o_max_x, o_min_y, o_max_y, o_min_z, o_max_z = obstacle_bounds
+        
+        vel_x, vel_y, vel_z = velocity
+        offset_x, offset_y, offset_z = 0.0, 0.0, 0.0
+        is_grounded = False
+        
+        # Calculate overlap on each axis
+        overlap_x = min(p_max_x - o_min_x, o_max_x - p_min_x)
+        overlap_y = min(p_max_y - o_min_y, o_max_y - p_min_y)
+        overlap_z = min(p_max_z - o_min_z, o_max_z - p_min_z)
+        
+        # Determine which axis has smallest overlap (that's where we resolve)
+        # Also consider velocity direction for better resolution
+        
+        # For Z axis (vertical in default config)
+        if up_axis == 'Z':
+            # Check if player is mostly above or below obstacle
+            player_center_z = (p_min_z + p_max_z) / 2
+            obstacle_center_z = (o_min_z + o_max_z) / 2
+            
+            if overlap_z <= overlap_x and overlap_z <= overlap_y:
+                # Resolve vertically
+                if player_center_z > obstacle_center_z:
+                    # Player is above - land on top
+                    offset_z = o_max_z - p_min_z
+                    if vel_z < 0:
+                        vel_z = 0
+                    is_grounded = True
+                else:
+                    # Player is below - hit head
+                    offset_z = o_min_z - p_max_z
+                    if vel_z > 0:
+                        vel_z = 0
+            else:
+                # Resolve horizontally
+                if forward_axis == 'X':
+                    player_center_x = (p_min_x + p_max_x) / 2
+                    obstacle_center_x = (o_min_x + o_max_x) / 2
+                    if player_center_x > obstacle_center_x:
+                        offset_x = o_max_x - p_min_x
+                    else:
+                        offset_x = o_min_x - p_max_x
+                    vel_x = 0
+                else:
+                    player_center_y = (p_min_y + p_max_y) / 2
+                    obstacle_center_y = (o_min_y + o_max_y) / 2
+                    if player_center_y > obstacle_center_y:
+                        offset_y = o_max_y - p_min_y
+                    else:
+                        offset_y = o_min_y - p_max_y
+                    vel_y = 0
+        else:
+            # Y is up axis
+            player_center_y = (p_min_y + p_max_y) / 2
+            obstacle_center_y = (o_min_y + o_max_y) / 2
+            
+            if overlap_y <= overlap_x and overlap_y <= overlap_z:
+                if player_center_y > obstacle_center_y:
+                    offset_y = o_max_y - p_min_y
+                    if vel_y < 0:
+                        vel_y = 0
+                    is_grounded = True
+                else:
+                    offset_y = o_min_y - p_max_y
+                    if vel_y > 0:
+                        vel_y = 0
+            else:
+                # Horizontal resolution
+                player_center_x = (p_min_x + p_max_x) / 2
+                obstacle_center_x = (o_min_x + o_max_x) / 2
+                if player_center_x > obstacle_center_x:
+                    offset_x = o_max_x - p_min_x
+                else:
+                    offset_x = o_min_x - p_max_x
+                vel_x = 0
+        
+        return (offset_x, offset_y, offset_z), (vel_x, vel_y, vel_z), is_grounded
     
     @staticmethod
     def update_physics(context, delta_time):
@@ -224,21 +367,20 @@ class SMBPhysicsEngine:
             effective_up_axis = 'Z'
         
         if props.forward_axis == 'X':
-            horizontal_pos = pos_x
             horizontal_vel = props.velocity_x
         else:
-            horizontal_pos = pos_y
             horizontal_vel = props.velocity_y
             
         if effective_up_axis == 'Z':
-            vertical_pos = pos_z
             vertical_vel = props.velocity_z
         else:
-            vertical_pos = pos_y
             vertical_vel = props.velocity_y
         
-        # Check if grounded
-        props.is_grounded = vertical_pos <= props.ground_level
+        # Check if grounded (will be updated by collision)
+        if effective_up_axis == 'Z':
+            props.is_grounded = pos_z <= props.ground_level + 0.01
+        else:
+            props.is_grounded = pos_y <= props.ground_level + 0.01
         
         # Horizontal movement
         horizontal_vel = SMBPhysicsEngine.update_horizontal(
@@ -265,24 +407,69 @@ class SMBPhysicsEngine:
             pos_y += vertical_vel * delta_time
             props.velocity_y = vertical_vel
         
-        # Ground collision
+        # Update position before collision detection
+        obj.location.x = pos_x
+        obj.location.y = pos_y
+        obj.location.z = pos_z
+        
+        # Object collision detection
+        if props.enable_collision:
+            collision_objects = SMBPhysicsEngine.get_collision_objects(context, obj)
+            padding = props.collision_padding
+            
+            for obstacle in collision_objects:
+                # Recalculate player bounds each iteration (position may change from previous collision)
+                player_bounds = SMBPhysicsEngine.get_object_bounds(obj)
+                obstacle_bounds = SMBPhysicsEngine.get_object_bounds(obstacle)
+                
+                # Apply padding to shrink the effective player collision box slightly
+                # This helps prevent getting stuck on edges
+                # min values decrease (subtract padding), max values decrease (subtract padding)
+                # This creates a slightly smaller hitbox for smoother collision
+                player_bounds = (
+                    player_bounds[0] + padding, player_bounds[1] - padding,
+                    player_bounds[2] + padding, player_bounds[3] - padding,
+                    player_bounds[4] + padding, player_bounds[5] - padding
+                )
+                
+                if SMBPhysicsEngine.check_aabb_collision(player_bounds, obstacle_bounds):
+                    # Get current velocity
+                    vel = (props.velocity_x, props.velocity_y, props.velocity_z)
+                    
+                    # Resolve collision
+                    offset, new_vel, is_grounded = SMBPhysicsEngine.resolve_collision(
+                        player_bounds, obstacle_bounds, vel,
+                        props.forward_axis, effective_up_axis
+                    )
+                    
+                    # Apply offset
+                    obj.location.x += offset[0]
+                    obj.location.y += offset[1]
+                    obj.location.z += offset[2]
+                    
+                    # Update velocity
+                    props.velocity_x = new_vel[0]
+                    props.velocity_y = new_vel[1]
+                    props.velocity_z = new_vel[2]
+                    
+                    # Update grounded state if landed on top
+                    if is_grounded:
+                        props.is_grounded = True
+                        props.is_jumping = False
+        
+        # Ground plane collision (fallback)
         if effective_up_axis == 'Z':
-            if pos_z < props.ground_level:
-                pos_z = props.ground_level
+            if obj.location.z < props.ground_level:
+                obj.location.z = props.ground_level
                 props.velocity_z = 0
                 props.is_grounded = True
                 props.is_jumping = False
         else:
-            if pos_y < props.ground_level:
-                pos_y = props.ground_level
+            if obj.location.y < props.ground_level:
+                obj.location.y = props.ground_level
                 props.velocity_y = 0
                 props.is_grounded = True
                 props.is_jumping = False
-        
-        # Update object position
-        obj.location.x = pos_x
-        obj.location.y = pos_y
-        obj.location.z = pos_z
     
     @staticmethod
     def update_horizontal(props, velocity, delta_time):
@@ -517,6 +704,47 @@ class SMB_OT_reset_to_defaults(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SMB_OT_tag_collision(bpy.types.Operator):
+    """Tag selected objects as collision objects"""
+    bl_idname = "smb.tag_collision"
+    bl_label = "Tag as Collision"
+    bl_description = "Tag selected objects as collision objects for SMB physics"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.selected_objects
+    
+    def execute(self, context):
+        count = 0
+        for obj in context.selected_objects:
+            obj['smb_collision'] = True
+            count += 1
+        self.report({'INFO'}, f"Tagged {count} object(s) for collision")
+        return {'FINISHED'}
+
+
+class SMB_OT_untag_collision(bpy.types.Operator):
+    """Remove collision tag from selected objects"""
+    bl_idname = "smb.untag_collision"
+    bl_label = "Remove Collision Tag"
+    bl_description = "Remove collision tag from selected objects"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.selected_objects
+    
+    def execute(self, context):
+        count = 0
+        for obj in context.selected_objects:
+            if 'smb_collision' in obj:
+                del obj['smb_collision']
+                count += 1
+        self.report({'INFO'}, f"Removed collision tag from {count} object(s)")
+        return {'FINISHED'}
+
+
 class SMB_PT_physics_panel(bpy.types.Panel):
     """Panel for SMB Physics controls"""
     bl_label = "Super Mario Bros. Physics"
@@ -630,14 +858,62 @@ class SMB_PT_physics_settings(bpy.types.Panel):
         layout.operator("smb.reset_defaults", icon='FILE_REFRESH')
 
 
+class SMB_PT_collision_panel(bpy.types.Panel):
+    """Panel for SMB Collision settings"""
+    bl_label = "Collision"
+    bl_idname = "SMB_PT_collision_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "SMB Physics"
+    bl_parent_id = "SMB_PT_physics_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.smb_physics_props
+        
+        # Collision toggle
+        layout.prop(props, "enable_collision")
+        
+        if props.enable_collision:
+            layout.prop(props, "collision_padding")
+            
+            layout.separator()
+            
+            # Tag/Untag buttons
+            box = layout.box()
+            box.label(text="Collision Objects:", icon='MOD_PHYSICS')
+            col = box.column(align=True)
+            col.operator("smb.tag_collision", icon='ADD')
+            col.operator("smb.untag_collision", icon='REMOVE')
+            
+            # List collision objects in scene
+            layout.separator()
+            box = layout.box()
+            box.label(text="Tagged Objects:", icon='OUTLINER_OB_MESH')
+            
+            collision_count = 0
+            for obj in context.scene.objects:
+                if obj.get('smb_collision', False) or 'smb_collision' in obj.name.lower():
+                    collision_count += 1
+                    row = box.row()
+                    row.label(text=obj.name, icon='CUBE')
+            
+            if collision_count == 0:
+                box.label(text="No collision objects", icon='INFO')
+
+
 # Registration
 classes = [
     SMBPhysicsProperties,
     SMB_OT_start_physics,
     SMB_OT_stop_physics,
     SMB_OT_reset_to_defaults,
+    SMB_OT_tag_collision,
+    SMB_OT_untag_collision,
     SMB_PT_physics_panel,
     SMB_PT_physics_settings,
+    SMB_PT_collision_panel,
 ]
 
 

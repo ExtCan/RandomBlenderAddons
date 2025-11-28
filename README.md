@@ -7,5 +7,7 @@ smb_physics - Super Mario Bros. Physics addon that recreates accurate NES Super 
    - Walking and running speeds with momentum
    - Skid deceleration when changing direction
    - Air control while jumping
+   - AABB collision detection with tagged objects (platforms, walls, blocks)
+   - Tag objects for collision using the Collision panel or by adding 'smb_collision' to object name
    - Customizable physics parameters with reset to SMB defaults
    - Controls: Arrow keys (←→) to move, Space to jump, Shift to run, Esc to stop
