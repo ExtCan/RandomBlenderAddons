@@ -4,6 +4,8 @@
 
 import bpy
 import time
+import json
+import os
 from mathutils import Vector
 from bpy.app.handlers import persistent
 
@@ -71,6 +73,116 @@ SMB_AIR_ACCEL_MULTIPLIER = 1.0  # SMB has full air control for acceleration
 # Jump sustain - holding jump reduces gravity effect
 # When holding jump: gravity is halved until peak or button release
 SMB_JUMP_GRAVITY_MULTIPLIER = 0.5
+
+
+# ==============================================================================
+# Built-in Physics Presets
+# ==============================================================================
+PHYSICS_PRESETS = {
+    'SMB1': {
+        'name': 'Super Mario Bros. 1',
+        'gravity': SMB_GRAVITY,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN,
+        'max_walk_speed': SMB_MAX_WALK_SPEED,
+        'max_run_speed': SMB_MAX_RUN_SPEED,
+        'walk_acceleration': SMB_WALK_ACCEL,
+        'run_acceleration': SMB_RUN_ACCEL,
+        'friction': SMB_FRICTION,
+        'skid_deceleration': SMB_SKID_DECEL,
+    },
+    'SMB3': {
+        'name': 'Super Mario Bros. 3',
+        # SMB3 has slightly different physics - floatier jumps
+        'gravity': SMB_GRAVITY * 0.85,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.9,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.1,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.15,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 1.05,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 1.1,
+        'walk_acceleration': SMB_WALK_ACCEL * 1.1,
+        'run_acceleration': SMB_RUN_ACCEL * 1.1,
+        'friction': SMB_FRICTION * 0.9,
+        'skid_deceleration': SMB_SKID_DECEL * 0.85,
+    },
+    'FLOATY': {
+        'name': 'Floaty (Low Gravity)',
+        'gravity': SMB_GRAVITY * 0.5,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.6,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 0.8,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 0.85,
+        'max_walk_speed': SMB_MAX_WALK_SPEED,
+        'max_run_speed': SMB_MAX_RUN_SPEED,
+        'walk_acceleration': SMB_WALK_ACCEL * 0.8,
+        'run_acceleration': SMB_RUN_ACCEL * 0.8,
+        'friction': SMB_FRICTION * 0.5,
+        'skid_deceleration': SMB_SKID_DECEL * 0.6,
+    },
+    'TIGHT': {
+        'name': 'Tight Controls',
+        'gravity': SMB_GRAVITY * 1.3,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 1.2,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.2,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.2,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 1.2,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 1.2,
+        'walk_acceleration': SMB_WALK_ACCEL * 1.5,
+        'run_acceleration': SMB_RUN_ACCEL * 1.5,
+        'friction': SMB_FRICTION * 1.5,
+        'skid_deceleration': SMB_SKID_DECEL * 1.3,
+    },
+}
+
+
+def get_presets_directory():
+    """Get the directory for storing custom presets"""
+    # Use Blender's config directory for user presets
+    config_dir = bpy.utils.user_resource('CONFIG')
+    presets_dir = os.path.join(config_dir, 'smb_physics_presets')
+    if not os.path.exists(presets_dir):
+        os.makedirs(presets_dir)
+    return presets_dir
+
+
+def get_custom_presets():
+    """Load all custom presets from the presets directory"""
+    presets = {}
+    presets_dir = get_presets_directory()
+    if os.path.exists(presets_dir):
+        for filename in os.listdir(presets_dir):
+            if filename.endswith('.json'):
+                filepath = os.path.join(presets_dir, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        preset = json.load(f)
+                        preset_name = filename[:-5]  # Remove .json
+                        presets[preset_name] = preset
+                except (json.JSONDecodeError, IOError):
+                    pass
+    return presets
+
+
+def update_player_custom_properties(obj, props):
+    """Update custom properties on the player object for driver usage"""
+    if obj is None:
+        return
+    
+    # Physics state properties (can be used with drivers)
+    obj['smb_velocity_x'] = props.velocity_x
+    obj['smb_velocity_y'] = props.velocity_y
+    obj['smb_velocity_z'] = props.velocity_z
+    obj['smb_speed'] = (props.velocity_x ** 2 + props.velocity_y ** 2 + props.velocity_z ** 2) ** 0.5
+    obj['smb_horizontal_speed'] = abs(props.velocity_x) if props.forward_axis == 'X' else abs(props.velocity_y)
+    obj['smb_is_grounded'] = 1.0 if props.is_grounded else 0.0
+    obj['smb_is_jumping'] = 1.0 if props.is_jumping else 0.0
+    obj['smb_is_running'] = 1.0 if props.is_running else 0.0
+    obj['smb_is_moving_left'] = 1.0 if props.input_left else 0.0
+    obj['smb_is_moving_right'] = 1.0 if props.input_right else 0.0
+    # Facing direction based on the configured forward axis
+    horizontal_vel = props.velocity_x if props.forward_axis == 'X' else props.velocity_y
+    obj['smb_facing_direction'] = 1.0 if horizontal_vel >= 0 else -1.0
+    obj['smb_physics_active'] = 1.0 if props.is_active else 0.0
 
 
 class SMBPhysicsProperties(bpy.types.PropertyGroup):
@@ -210,6 +322,20 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
             ('Z', "Z Axis", "Jump along Z axis"),
         ],
         default='Z'
+    )
+    
+    # Preset name for saving
+    preset_name: bpy.props.StringProperty(
+        name="Preset Name",
+        description="Name for saving the current physics settings as a preset",
+        default="My Preset"
+    )
+    
+    # Block Blender shortcuts in game mode
+    block_shortcuts: bpy.props.BoolProperty(
+        name="Block Shortcuts",
+        description="Block Blender shortcuts while physics is active (Game Mode)",
+        default=True
     )
 
 
@@ -470,6 +596,9 @@ class SMBPhysicsEngine:
                 props.velocity_y = 0
                 props.is_grounded = True
                 props.is_jumping = False
+        
+        # Update custom properties on player object for driver usage
+        update_player_custom_properties(obj, props)
     
     @staticmethod
     def update_horizontal(props, velocity, delta_time):
@@ -592,30 +721,50 @@ class SMB_OT_start_physics(bpy.types.Operator):
                     area.tag_redraw()
         
         # Handle keyboard input for movement (PRESS sets True, RELEASE sets False)
+        handled = False
         if event.type == 'LEFT_ARROW':
             if event.value == 'PRESS':
                 props.input_left = True
             elif event.value == 'RELEASE':
                 props.input_left = False
+            handled = True
         elif event.type == 'RIGHT_ARROW':
             if event.value == 'PRESS':
                 props.input_right = True
             elif event.value == 'RELEASE':
                 props.input_right = False
+            handled = True
         elif event.type == 'SPACE':
             if event.value == 'PRESS':
                 props.input_jump = True
             elif event.value == 'RELEASE':
                 props.input_jump = False
+            handled = True
         elif event.type == 'LEFT_SHIFT':
             if event.value == 'PRESS':
                 props.input_run = True
             elif event.value == 'RELEASE':
                 props.input_run = False
+            handled = True
         elif event.type in {'ESC'}:
             props.is_active = False
             self.cancel(context)
             return {'CANCELLED'}
+        
+        # Block Blender shortcuts in game mode if enabled
+        if props.block_shortcuts:
+            # Allow mouse events and timer events to pass through
+            if event.type in {'TIMER', 'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 
+                              'LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE',
+                              'WHEELUPMOUSE', 'WHEELDOWNMOUSE',
+                              'WINDOW_DEACTIVATE', 'NONE'}:
+                return {'PASS_THROUGH'}
+            # Block all keyboard events except our game controls
+            if event.type not in {'LEFT_ARROW', 'RIGHT_ARROW', 'SPACE', 'LEFT_SHIFT', 'ESC'}:
+                return {'RUNNING_MODAL'}
+            # If we handled a game control, consume it
+            if handled:
+                return {'RUNNING_MODAL'}
         
         return {'PASS_THROUGH'}
     
@@ -644,6 +793,9 @@ class SMB_OT_start_physics(bpy.types.Operator):
         else:
             props.ground_level = obj.location.y
         
+        # Initialize custom properties on player object
+        update_player_custom_properties(obj, props)
+        
         props.is_active = True
         
         wm = context.window_manager
@@ -660,6 +812,11 @@ class SMB_OT_start_physics(bpy.types.Operator):
         props.input_right = False
         props.input_jump = False
         props.input_run = False
+        
+        # Update custom properties to reflect inactive state
+        obj = context.active_object
+        if obj:
+            update_player_custom_properties(obj, props)
         
         wm = context.window_manager
         if self._timer:
@@ -702,6 +859,126 @@ class SMB_OT_reset_to_defaults(bpy.types.Operator):
         
         self.report({'INFO'}, "Physics values reset to SMB defaults")
         return {'FINISHED'}
+
+
+class SMB_OT_load_preset(bpy.types.Operator):
+    """Load a physics preset"""
+    bl_idname = "smb.load_preset"
+    bl_label = "Load Preset"
+    bl_description = "Load a physics preset"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    preset_key: bpy.props.StringProperty(
+        name="Preset Key",
+        description="Key of the preset to load"
+    )
+    
+    def execute(self, context):
+        props = context.scene.smb_physics_props
+        
+        # Check built-in presets first
+        if self.preset_key in PHYSICS_PRESETS:
+            preset = PHYSICS_PRESETS[self.preset_key]
+        else:
+            # Check custom presets
+            custom_presets = get_custom_presets()
+            if self.preset_key in custom_presets:
+                preset = custom_presets[self.preset_key]
+            else:
+                self.report({'ERROR'}, f"Preset '{self.preset_key}' not found")
+                return {'CANCELLED'}
+        
+        # Apply preset values
+        props.gravity = preset.get('gravity', SMB_GRAVITY)
+        props.terminal_velocity = preset.get('terminal_velocity', SMB_TERMINAL_VELOCITY)
+        props.jump_velocity = preset.get('jump_velocity', SMB_JUMP_VELOCITY_WALK)
+        props.jump_velocity_run = preset.get('jump_velocity_run', SMB_JUMP_VELOCITY_RUN)
+        props.max_walk_speed = preset.get('max_walk_speed', SMB_MAX_WALK_SPEED)
+        props.max_run_speed = preset.get('max_run_speed', SMB_MAX_RUN_SPEED)
+        props.walk_acceleration = preset.get('walk_acceleration', SMB_WALK_ACCEL)
+        props.run_acceleration = preset.get('run_acceleration', SMB_RUN_ACCEL)
+        props.friction = preset.get('friction', SMB_FRICTION)
+        props.skid_deceleration = preset.get('skid_deceleration', SMB_SKID_DECEL)
+        
+        preset_name = preset.get('name', self.preset_key)
+        self.report({'INFO'}, f"Loaded preset: {preset_name}")
+        return {'FINISHED'}
+
+
+class SMB_OT_save_preset(bpy.types.Operator):
+    """Save current physics settings as a preset"""
+    bl_idname = "smb.save_preset"
+    bl_label = "Save Preset"
+    bl_description = "Save current physics settings as a custom preset"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.smb_physics_props
+        
+        preset_name = props.preset_name.strip()
+        if not preset_name:
+            self.report({'ERROR'}, "Please enter a preset name")
+            return {'CANCELLED'}
+        
+        # Create preset data
+        preset = {
+            'name': preset_name,
+            'gravity': props.gravity,
+            'terminal_velocity': props.terminal_velocity,
+            'jump_velocity': props.jump_velocity,
+            'jump_velocity_run': props.jump_velocity_run,
+            'max_walk_speed': props.max_walk_speed,
+            'max_run_speed': props.max_run_speed,
+            'walk_acceleration': props.walk_acceleration,
+            'run_acceleration': props.run_acceleration,
+            'friction': props.friction,
+            'skid_deceleration': props.skid_deceleration,
+        }
+        
+        # Save to file
+        presets_dir = get_presets_directory()
+        # Sanitize filename
+        safe_name = "".join(c for c in preset_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = safe_name.replace(' ', '_')
+        filepath = os.path.join(presets_dir, f"{safe_name}.json")
+        
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(preset, f, indent=2)
+            self.report({'INFO'}, f"Saved preset: {preset_name}")
+            return {'FINISHED'}
+        except IOError as e:
+            self.report({'ERROR'}, f"Failed to save preset: {e}")
+            return {'CANCELLED'}
+
+
+class SMB_OT_delete_preset(bpy.types.Operator):
+    """Delete a custom preset"""
+    bl_idname = "smb.delete_preset"
+    bl_label = "Delete Preset"
+    bl_description = "Delete a custom preset"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    preset_key: bpy.props.StringProperty(
+        name="Preset Key",
+        description="Key of the preset to delete"
+    )
+    
+    def execute(self, context):
+        presets_dir = get_presets_directory()
+        filepath = os.path.join(presets_dir, f"{self.preset_key}.json")
+        
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+                self.report({'INFO'}, f"Deleted preset: {self.preset_key}")
+                return {'FINISHED'}
+            except IOError as e:
+                self.report({'ERROR'}, f"Failed to delete preset: {e}")
+                return {'CANCELLED'}
+        else:
+            self.report({'ERROR'}, f"Preset file not found: {self.preset_key}")
+            return {'CANCELLED'}
 
 
 class SMB_OT_tag_collision(bpy.types.Operator):
@@ -796,8 +1073,119 @@ class SMB_PT_physics_panel(bpy.types.Panel):
             col.label(text="Space : Jump")
             col.label(text="Shift : Run")
             col.label(text="Esc : Stop")
+            
+            # Game mode indicator
+            if props.block_shortcuts:
+                box = layout.box()
+                box.label(text="🎮 GAME MODE ACTIVE", icon='GAME')
+                box.label(text="Blender shortcuts blocked")
         else:
             layout.operator("smb.start_physics", text="Start Physics", icon='PLAY')
+            
+            # Game mode option
+            layout.prop(props, "block_shortcuts")
+
+
+class SMB_PT_presets_panel(bpy.types.Panel):
+    """Panel for SMB Physics presets"""
+    bl_label = "Presets"
+    bl_idname = "SMB_PT_presets_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "SMB Physics"
+    bl_parent_id = "SMB_PT_physics_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.smb_physics_props
+        
+        # Built-in presets
+        box = layout.box()
+        box.label(text="Built-in Presets:", icon='PRESET')
+        col = box.column(align=True)
+        for key, preset in PHYSICS_PRESETS.items():
+            op = col.operator("smb.load_preset", text=preset['name'], icon='PLAY')
+            op.preset_key = key
+        
+        layout.separator()
+        
+        # Custom presets
+        box = layout.box()
+        box.label(text="Custom Presets:", icon='USER')
+        
+        custom_presets = get_custom_presets()
+        if custom_presets:
+            for key, preset in custom_presets.items():
+                row = box.row(align=True)
+                op = row.operator("smb.load_preset", text=preset.get('name', key), icon='PLAY')
+                op.preset_key = key
+                op = row.operator("smb.delete_preset", text="", icon='X')
+                op.preset_key = key
+        else:
+            box.label(text="No custom presets", icon='INFO')
+        
+        layout.separator()
+        
+        # Save preset
+        box = layout.box()
+        box.label(text="Save Current Settings:", icon='FILE_NEW')
+        box.prop(props, "preset_name", text="Name")
+        box.operator("smb.save_preset", icon='FILE_TICK')
+
+
+class SMB_PT_driver_props_panel(bpy.types.Panel):
+    """Panel showing driver-compatible properties"""
+    bl_label = "Driver Properties"
+    bl_idname = "SMB_PT_driver_props_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "SMB Physics"
+    bl_parent_id = "SMB_PT_physics_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        
+        if not obj:
+            layout.label(text="No object selected", icon='ERROR')
+            return
+        
+        box = layout.box()
+        box.label(text="Player Custom Properties:", icon='DRIVER')
+        box.label(text="(For use with drivers)", icon='INFO')
+        
+        col = box.column(align=True)
+        
+        # List available properties
+        driver_props = [
+            ('smb_velocity_x', 'Velocity X'),
+            ('smb_velocity_y', 'Velocity Y'),
+            ('smb_velocity_z', 'Velocity Z'),
+            ('smb_speed', 'Total Speed'),
+            ('smb_horizontal_speed', 'Horizontal Speed'),
+            ('smb_is_grounded', 'Is Grounded (0/1)'),
+            ('smb_is_jumping', 'Is Jumping (0/1)'),
+            ('smb_is_running', 'Is Running (0/1)'),
+            ('smb_is_moving_left', 'Moving Left (0/1)'),
+            ('smb_is_moving_right', 'Moving Right (0/1)'),
+            ('smb_facing_direction', 'Facing Direction (-1/1)'),
+            ('smb_physics_active', 'Physics Active (0/1)'),
+        ]
+        
+        for prop_name, prop_label in driver_props:
+            row = col.row()
+            value = obj.get(prop_name, 'N/A')
+            if isinstance(value, float):
+                row.label(text=f"{prop_label}: {value:.2f}")
+            else:
+                row.label(text=f"{prop_label}: {value}")
+        
+        layout.separator()
+        box = layout.box()
+        box.label(text="Driver Path Example:", icon='QUESTION')
+        box.label(text='bpy.data.objects["' + obj.name + '"]["smb_velocity_x"]')
 
 
 class SMB_PT_physics_settings(bpy.types.Panel):
@@ -909,9 +1297,14 @@ classes = [
     SMB_OT_start_physics,
     SMB_OT_stop_physics,
     SMB_OT_reset_to_defaults,
+    SMB_OT_load_preset,
+    SMB_OT_save_preset,
+    SMB_OT_delete_preset,
     SMB_OT_tag_collision,
     SMB_OT_untag_collision,
     SMB_PT_physics_panel,
+    SMB_PT_presets_panel,
+    SMB_PT_driver_props_panel,
     SMB_PT_physics_settings,
     SMB_PT_collision_panel,
 ]
