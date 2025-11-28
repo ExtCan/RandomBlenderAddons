@@ -92,6 +92,20 @@ PHYSICS_PRESETS = {
         'friction': SMB_FRICTION,
         'skid_deceleration': SMB_SKID_DECEL,
     },
+    'SMB2': {
+        'name': 'Super Mario Bros. 2 (USA)',
+        # SMB2 USA has floatier physics, higher jumps, can pick up enemies
+        'gravity': SMB_GRAVITY * 0.75,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.85,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.3,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.35,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 0.9,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 0.95,
+        'walk_acceleration': SMB_WALK_ACCEL * 0.9,
+        'run_acceleration': SMB_RUN_ACCEL * 0.9,
+        'friction': SMB_FRICTION * 0.8,
+        'skid_deceleration': SMB_SKID_DECEL * 0.7,
+    },
     'SMB3': {
         'name': 'Super Mario Bros. 3',
         # SMB3 has slightly different physics - floatier jumps
@@ -105,6 +119,62 @@ PHYSICS_PRESETS = {
         'run_acceleration': SMB_RUN_ACCEL * 1.1,
         'friction': SMB_FRICTION * 0.9,
         'skid_deceleration': SMB_SKID_DECEL * 0.85,
+    },
+    'SMW': {
+        'name': 'Super Mario World',
+        # SMW has more momentum, spin jumps, cape flying
+        'gravity': SMB_GRAVITY * 0.9,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.95,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.15,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.2,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 1.1,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 1.2,
+        'walk_acceleration': SMB_WALK_ACCEL * 1.0,
+        'run_acceleration': SMB_RUN_ACCEL * 1.1,
+        'friction': SMB_FRICTION * 0.85,
+        'skid_deceleration': SMB_SKID_DECEL * 0.9,
+    },
+    'NSMB': {
+        'name': 'New Super Mario Bros.',
+        # NSMB has more floaty physics, wall jumps, ground pound
+        'gravity': SMB_GRAVITY * 0.8,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.85,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.2,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.25,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 1.05,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 1.15,
+        'walk_acceleration': SMB_WALK_ACCEL * 1.0,
+        'run_acceleration': SMB_RUN_ACCEL * 1.05,
+        'friction': SMB_FRICTION * 0.75,
+        'skid_deceleration': SMB_SKID_DECEL * 0.8,
+    },
+    'LUIGI_SMB1': {
+        'name': 'Luigi (SMB1 Style)',
+        # Luigi has higher jumps but less traction
+        'gravity': SMB_GRAVITY * 0.85,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.25,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.3,
+        'max_walk_speed': SMB_MAX_WALK_SPEED,
+        'max_run_speed': SMB_MAX_RUN_SPEED,
+        'walk_acceleration': SMB_WALK_ACCEL * 0.85,
+        'run_acceleration': SMB_RUN_ACCEL * 0.85,
+        'friction': SMB_FRICTION * 0.5,  # Slippery!
+        'skid_deceleration': SMB_SKID_DECEL * 0.6,
+    },
+    'LUIGI_SMB2': {
+        'name': 'Luigi (SMB2 Style)',
+        # SMB2 Luigi has flutter jump, highest jumps
+        'gravity': SMB_GRAVITY * 0.6,
+        'terminal_velocity': SMB_TERMINAL_VELOCITY * 0.75,
+        'jump_velocity': SMB_JUMP_VELOCITY_WALK * 1.5,
+        'jump_velocity_run': SMB_JUMP_VELOCITY_RUN * 1.55,
+        'max_walk_speed': SMB_MAX_WALK_SPEED * 0.85,
+        'max_run_speed': SMB_MAX_RUN_SPEED * 0.9,
+        'walk_acceleration': SMB_WALK_ACCEL * 0.8,
+        'run_acceleration': SMB_RUN_ACCEL * 0.8,
+        'friction': SMB_FRICTION * 0.4,  # Very slippery!
+        'skid_deceleration': SMB_SKID_DECEL * 0.5,
     },
     'FLOATY': {
         'name': 'Floaty (Low Gravity)',
@@ -177,6 +247,7 @@ def update_player_custom_properties(obj, props):
     obj['smb_is_grounded'] = 1.0 if props.is_grounded else 0.0
     obj['smb_is_jumping'] = 1.0 if props.is_jumping else 0.0
     obj['smb_is_running'] = 1.0 if props.is_running else 0.0
+    obj['smb_is_swimming'] = 1.0 if props.is_swimming else 0.0
     obj['smb_is_moving_left'] = 1.0 if props.input_left else 0.0
     obj['smb_is_moving_right'] = 1.0 if props.input_right else 0.0
     # Facing direction based on the configured forward axis
@@ -337,6 +408,47 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
         description="Block Blender shortcuts while physics is active (Game Mode)",
         default=True
     )
+    
+    # Swimming mode
+    is_swimming: bpy.props.BoolProperty(
+        name="Is Swimming",
+        description="Whether the player is currently in water",
+        default=False
+    )
+    
+    swim_gravity: bpy.props.FloatProperty(
+        name="Swim Gravity",
+        description="Gravity while swimming (units/sec²)",
+        default=SMB_GRAVITY * 0.3,
+        min=0.0
+    )
+    
+    swim_speed: bpy.props.FloatProperty(
+        name="Swim Speed",
+        description="Maximum swimming speed (units/sec)",
+        default=SMB_MAX_WALK_SPEED * 0.7,
+        min=0.0
+    )
+    
+    swim_acceleration: bpy.props.FloatProperty(
+        name="Swim Acceleration",
+        description="Acceleration while swimming (units/sec²)",
+        default=SMB_WALK_ACCEL * 0.6,
+        min=0.0
+    )
+
+
+# Collision type constants
+COLLISION_TYPES = {
+    'SOLID': 'Standard solid collision',
+    'BREAKABLE': 'Can be broken by hitting from below',
+    'SPRING': 'Bounces player upward',
+    'ENEMY': 'Damages player on side contact, defeated by jumping on',
+    'WATER': 'Enables swimming mode when entered',
+    'FIRE': 'Damages player on any contact',
+    'MOVING': 'Moving platform that carries player',
+    'ONE_WAY': 'Can pass through from below',
+}
 
 
 class SMBPhysicsEngine:
@@ -370,26 +482,56 @@ class SMBPhysicsEngine:
     
     @staticmethod
     def get_collision_objects(context, player_obj):
-        """Get all objects tagged for collision (name contains 'smb_collision' or has custom property)"""
+        """Get all objects tagged for collision with their collision type"""
         collision_objects = []
         for obj in context.scene.objects:
             if obj == player_obj:
                 continue
             # Check if object is tagged for collision
             if 'smb_collision' in obj.name.lower() or obj.get('smb_collision', False):
-                collision_objects.append(obj)
+                # Get collision type (default to SOLID)
+                collision_type = obj.get('smb_collision_type', 'SOLID')
+                collision_objects.append((obj, collision_type))
         return collision_objects
     
     @staticmethod
-    def resolve_collision(player_bounds, obstacle_bounds, velocity, forward_axis, up_axis):
+    def get_water_boxes(context, player_obj):
+        """Get all objects tagged as water boxes"""
+        water_boxes = []
+        for obj in context.scene.objects:
+            if obj == player_obj:
+                continue
+            if obj.get('smb_collision_type') == 'WATER' or 'smb_water' in obj.name.lower():
+                water_boxes.append(obj)
+        return water_boxes
+    
+    @staticmethod
+    def check_in_water(context, player_obj, props):
+        """Check if player is inside any water box"""
+        water_boxes = SMBPhysicsEngine.get_water_boxes(context, player_obj)
+        player_bounds = SMBPhysicsEngine.get_object_bounds(player_obj)
+        
+        for water_obj in water_boxes:
+            water_bounds = SMBPhysicsEngine.get_object_bounds(water_obj)
+            if SMBPhysicsEngine.check_aabb_collision(player_bounds, water_bounds):
+                return True
+        return False
+    
+    @staticmethod
+    def resolve_collision(player_bounds, obstacle_bounds, velocity, forward_axis, up_axis, collision_type='SOLID'):
         """
         Resolve collision between player and obstacle.
-        Returns: (new_pos_offset, new_velocity, is_grounded_on_top)
+        Returns: (new_pos_offset, new_velocity, is_grounded_on_top, special_action)
         
         SMB-style collision resolution:
         - Landing on top of objects (like platforms/blocks)
         - Hitting head on bottom of objects
         - Horizontal wall collision
+        
+        Special collision types:
+        - SPRING: Bounces player upward
+        - ONE_WAY: Only collide from above
+        - ENEMY: Can stomp from above
         """
         p_min_x, p_max_x, p_min_y, p_max_y, p_min_z, p_max_z = player_bounds
         o_min_x, o_max_x, o_min_y, o_max_y, o_min_z, o_max_z = obstacle_bounds
@@ -397,36 +539,56 @@ class SMBPhysicsEngine:
         vel_x, vel_y, vel_z = velocity
         offset_x, offset_y, offset_z = 0.0, 0.0, 0.0
         is_grounded = False
+        special_action = None  # Can be 'bounce', 'stomp', 'damage', 'break'
         
         # Calculate overlap on each axis
         overlap_x = min(p_max_x - o_min_x, o_max_x - p_min_x)
         overlap_y = min(p_max_y - o_min_y, o_max_y - p_min_y)
         overlap_z = min(p_max_z - o_min_z, o_max_z - p_min_z)
         
-        # Determine which axis has smallest overlap (that's where we resolve)
-        # Also consider velocity direction for better resolution
-        
         # For Z axis (vertical in default config)
         if up_axis == 'Z':
-            # Check if player is mostly above or below obstacle
             player_center_z = (p_min_z + p_max_z) / 2
             obstacle_center_z = (o_min_z + o_max_z) / 2
+            is_above = player_center_z > obstacle_center_z
+            is_below = player_center_z < obstacle_center_z
+            
+            # Handle ONE_WAY platforms - only collide from above
+            if collision_type == 'ONE_WAY':
+                if not is_above or vel_z > 0:
+                    return (0, 0, 0), velocity, False, None
             
             if overlap_z <= overlap_x and overlap_z <= overlap_y:
-                # Resolve vertically
-                if player_center_z > obstacle_center_z:
+                if is_above:
                     # Player is above - land on top
                     offset_z = o_max_z - p_min_z
-                    if vel_z < 0:
-                        vel_z = 0
-                    is_grounded = True
+                    
+                    if collision_type == 'SPRING':
+                        # Bounce upward
+                        vel_z = abs(vel_z) * 2.0 if abs(vel_z) > 1.0 else 15.0
+                        special_action = 'bounce'
+                    elif collision_type == 'ENEMY':
+                        vel_z = 8.0  # Stomp bounce
+                        special_action = 'stomp'
+                    else:
+                        if vel_z < 0:
+                            vel_z = 0
+                        is_grounded = True
                 else:
                     # Player is below - hit head
                     offset_z = o_min_z - p_max_z
                     if vel_z > 0:
                         vel_z = 0
+                    
+                    if collision_type == 'BREAKABLE':
+                        special_action = 'break'
+                    elif collision_type == 'ENEMY':
+                        special_action = 'damage'
             else:
-                # Resolve horizontally
+                # Horizontal collision
+                if collision_type == 'ENEMY' or collision_type == 'FIRE':
+                    special_action = 'damage'
+                
                 if forward_axis == 'X':
                     player_center_x = (p_min_x + p_max_x) / 2
                     obstacle_center_x = (o_min_x + o_max_x) / 2
@@ -447,19 +609,41 @@ class SMBPhysicsEngine:
             # Y is up axis
             player_center_y = (p_min_y + p_max_y) / 2
             obstacle_center_y = (o_min_y + o_max_y) / 2
+            is_above = player_center_y > obstacle_center_y
+            
+            # Handle ONE_WAY platforms
+            if collision_type == 'ONE_WAY':
+                if not is_above or vel_y > 0:
+                    return (0, 0, 0), velocity, False, None
             
             if overlap_y <= overlap_x and overlap_y <= overlap_z:
-                if player_center_y > obstacle_center_y:
+                if is_above:
                     offset_y = o_max_y - p_min_y
-                    if vel_y < 0:
-                        vel_y = 0
-                    is_grounded = True
+                    
+                    if collision_type == 'SPRING':
+                        vel_y = abs(vel_y) * 2.0 if abs(vel_y) > 1.0 else 15.0
+                        special_action = 'bounce'
+                    elif collision_type == 'ENEMY':
+                        vel_y = 8.0
+                        special_action = 'stomp'
+                    else:
+                        if vel_y < 0:
+                            vel_y = 0
+                        is_grounded = True
                 else:
                     offset_y = o_min_y - p_max_y
                     if vel_y > 0:
                         vel_y = 0
+                    
+                    if collision_type == 'BREAKABLE':
+                        special_action = 'break'
+                    elif collision_type == 'ENEMY':
+                        special_action = 'damage'
             else:
                 # Horizontal resolution
+                if collision_type == 'ENEMY' or collision_type == 'FIRE':
+                    special_action = 'damage'
+                    
                 player_center_x = (p_min_x + p_max_x) / 2
                 obstacle_center_x = (o_min_x + o_max_x) / 2
                 if player_center_x > obstacle_center_x:
@@ -468,7 +652,7 @@ class SMBPhysicsEngine:
                     offset_x = o_min_x - p_max_x
                 vel_x = 0
         
-        return (offset_x, offset_y, offset_z), (vel_x, vel_y, vel_z), is_grounded
+        return (offset_x, offset_y, offset_z), (vel_x, vel_y, vel_z), is_grounded, special_action
     
     @staticmethod
     def update_physics(context, delta_time):
@@ -508,12 +692,16 @@ class SMBPhysicsEngine:
         else:
             props.is_grounded = pos_y <= props.ground_level + 0.01
         
-        # Horizontal movement
+        # Check if in water
+        was_swimming = props.is_swimming
+        props.is_swimming = SMBPhysicsEngine.check_in_water(context, obj, props)
+        
+        # Horizontal movement (modified for swimming)
         horizontal_vel = SMBPhysicsEngine.update_horizontal(
             props, horizontal_vel, delta_time
         )
         
-        # Vertical movement (jumping/gravity)
+        # Vertical movement (jumping/gravity/swimming)
         vertical_vel = SMBPhysicsEngine.update_vertical(
             props, vertical_vel, delta_time
         )
@@ -543,15 +731,16 @@ class SMBPhysicsEngine:
             collision_objects = SMBPhysicsEngine.get_collision_objects(context, obj)
             padding = props.collision_padding
             
-            for obstacle in collision_objects:
+            for obstacle, collision_type in collision_objects:
+                # Skip WATER type in normal collision (handled separately)
+                if collision_type == 'WATER':
+                    continue
+                    
                 # Recalculate player bounds each iteration (position may change from previous collision)
                 player_bounds = SMBPhysicsEngine.get_object_bounds(obj)
                 obstacle_bounds = SMBPhysicsEngine.get_object_bounds(obstacle)
                 
                 # Apply padding to shrink the effective player collision box slightly
-                # This helps prevent getting stuck on edges
-                # min values decrease (subtract padding), max values decrease (subtract padding)
-                # This creates a slightly smaller hitbox for smoother collision
                 player_bounds = (
                     player_bounds[0] + padding, player_bounds[1] - padding,
                     player_bounds[2] + padding, player_bounds[3] - padding,
@@ -562,11 +751,23 @@ class SMBPhysicsEngine:
                     # Get current velocity
                     vel = (props.velocity_x, props.velocity_y, props.velocity_z)
                     
-                    # Resolve collision
-                    offset, new_vel, is_grounded = SMBPhysicsEngine.resolve_collision(
+                    # Resolve collision with type
+                    offset, new_vel, is_grounded, special_action = SMBPhysicsEngine.resolve_collision(
                         player_bounds, obstacle_bounds, vel,
-                        props.forward_axis, effective_up_axis
+                        props.forward_axis, effective_up_axis, collision_type
                     )
+                    
+                    # Handle special actions
+                    if special_action == 'break':
+                        # Hide or mark the object as broken
+                        obstacle['smb_broken'] = True
+                        obstacle.hide_viewport = True
+                        obstacle.hide_render = True
+                    elif special_action == 'stomp':
+                        # Mark enemy as defeated
+                        obstacle['smb_defeated'] = True
+                        obstacle.hide_viewport = True
+                        obstacle.hide_render = True
                     
                     # Apply offset
                     obj.location.x += offset[0]
@@ -610,6 +811,25 @@ class SMBPhysicsEngine:
         if props.input_right:
             direction += 1
         
+        # Swimming mode uses different physics
+        if props.is_swimming:
+            max_speed = props.swim_speed
+            acceleration = props.swim_acceleration
+            friction = props.swim_acceleration * 0.5  # Less friction in water
+            
+            if direction != 0:
+                velocity += direction * acceleration * delta_time
+                velocity = max(-max_speed, min(max_speed, velocity))
+            else:
+                # Apply water resistance
+                if velocity > 0:
+                    velocity = max(0, velocity - friction * delta_time)
+                elif velocity < 0:
+                    velocity = min(0, velocity + friction * delta_time)
+            
+            return velocity
+        
+        # Normal movement
         # Determine max speed and acceleration based on run state
         if props.input_run or props.is_running:
             max_speed = props.max_run_speed
@@ -654,7 +874,20 @@ class SMBPhysicsEngine:
     
     @staticmethod
     def update_vertical(props, velocity, delta_time):
-        """Update vertical velocity (jumping and gravity)"""
+        """Update vertical velocity (jumping, gravity, and swimming)"""
+        
+        # Swimming mode
+        if props.is_swimming:
+            # In water, pressing jump swims upward
+            if props.input_jump:
+                velocity = props.swim_speed * 0.8  # Swim upward
+            else:
+                # Slowly sink in water
+                velocity -= props.swim_gravity * delta_time
+                velocity = max(-props.swim_speed * 0.5, velocity)  # Cap sinking speed
+            return velocity
+        
+        # Normal jump/gravity
         # Handle jump initiation
         if props.input_jump and props.is_grounded and not props.is_jumping:
             props.is_jumping = True
@@ -985,7 +1218,7 @@ class SMB_OT_tag_collision(bpy.types.Operator):
     """Tag selected objects as collision objects"""
     bl_idname = "smb.tag_collision"
     bl_label = "Tag as Collision"
-    bl_description = "Tag selected objects as collision objects for SMB physics"
+    bl_description = "Tag selected objects as collision objects for SMB physics (SOLID type)"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
@@ -996,8 +1229,9 @@ class SMB_OT_tag_collision(bpy.types.Operator):
         count = 0
         for obj in context.selected_objects:
             obj['smb_collision'] = True
+            obj['smb_collision_type'] = 'SOLID'
             count += 1
-        self.report({'INFO'}, f"Tagged {count} object(s) for collision")
+        self.report({'INFO'}, f"Tagged {count} object(s) for SOLID collision")
         return {'FINISHED'}
 
 
@@ -1015,10 +1249,53 @@ class SMB_OT_untag_collision(bpy.types.Operator):
     def execute(self, context):
         count = 0
         for obj in context.selected_objects:
+            removed = False
             if 'smb_collision' in obj:
                 del obj['smb_collision']
+                removed = True
+            if 'smb_collision_type' in obj:
+                del obj['smb_collision_type']
+                removed = True
+            if removed:
                 count += 1
         self.report({'INFO'}, f"Removed collision tag from {count} object(s)")
+        return {'FINISHED'}
+
+
+class SMB_OT_set_collision_type(bpy.types.Operator):
+    """Set collision type for selected objects"""
+    bl_idname = "smb.set_collision_type"
+    bl_label = "Set Collision Type"
+    bl_description = "Set the collision type for selected objects"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    collision_type: bpy.props.EnumProperty(
+        name="Collision Type",
+        description="Type of collision behavior",
+        items=[
+            ('SOLID', "Solid", "Standard solid collision"),
+            ('BREAKABLE', "Breakable", "Can be broken by hitting from below"),
+            ('SPRING', "Spring", "Bounces player upward"),
+            ('ENEMY', "Enemy", "Damages player on side contact, defeated by jumping on"),
+            ('WATER', "Water", "Enables swimming mode when entered"),
+            ('FIRE', "Fire", "Damages player on any contact"),
+            ('MOVING', "Moving Platform", "Moving platform that carries player"),
+            ('ONE_WAY', "One-Way", "Can pass through from below"),
+        ],
+        default='SOLID'
+    )
+    
+    @classmethod
+    def poll(cls, context):
+        return context.selected_objects
+    
+    def execute(self, context):
+        count = 0
+        for obj in context.selected_objects:
+            obj['smb_collision'] = True
+            obj['smb_collision_type'] = self.collision_type
+            count += 1
+        self.report({'INFO'}, f"Set {count} object(s) to {self.collision_type} collision")
         return {'FINISHED'}
 
 
@@ -1056,6 +1333,7 @@ class SMB_PT_physics_panel(bpy.types.Panel):
             col.label(text=f"Grounded: {'Yes' if props.is_grounded else 'No'}")
             col.label(text=f"Jumping: {'Yes' if props.is_jumping else 'No'}")
             col.label(text=f"Running: {'Yes' if props.is_running else 'No'}")
+            col.label(text=f"Swimming: {'Yes' if props.is_swimming else 'No'}")
             
             # Show velocity
             box = layout.box()
@@ -1070,14 +1348,14 @@ class SMB_PT_physics_panel(bpy.types.Panel):
             box.label(text="Controls:", icon='KEYTYPE_KEYFRAME_VEC')
             col = box.column(align=True)
             col.label(text="← → : Move Left/Right")
-            col.label(text="Space : Jump")
+            col.label(text="Space : Jump (or Swim Up)")
             col.label(text="Shift : Run")
             col.label(text="Esc : Stop")
             
             # Game mode indicator
             if props.block_shortcuts:
                 box = layout.box()
-                box.label(text="🎮 GAME MODE ACTIVE", icon='GAME')
+                box.label(text="🎮 GAME MODE ACTIVE", icon='PLAY')
                 box.label(text="Blender shortcuts blocked")
         else:
             layout.operator("smb.start_physics", text="Start Physics", icon='PLAY')
@@ -1168,6 +1446,7 @@ class SMB_PT_driver_props_panel(bpy.types.Panel):
             ('smb_is_grounded', 'Is Grounded (0/1)'),
             ('smb_is_jumping', 'Is Jumping (0/1)'),
             ('smb_is_running', 'Is Running (0/1)'),
+            ('smb_is_swimming', 'Is Swimming (0/1)'),
             ('smb_is_moving_left', 'Moving Left (0/1)'),
             ('smb_is_moving_right', 'Moving Right (0/1)'),
             ('smb_facing_direction', 'Facing Direction (-1/1)'),
@@ -1272,8 +1551,43 @@ class SMB_PT_collision_panel(bpy.types.Panel):
             box = layout.box()
             box.label(text="Collision Objects:", icon='MOD_PHYSICS')
             col = box.column(align=True)
-            col.operator("smb.tag_collision", icon='ADD')
+            col.operator("smb.tag_collision", text="Tag as Solid", icon='ADD')
             col.operator("smb.untag_collision", icon='REMOVE')
+            
+            layout.separator()
+            
+            # Collision type buttons
+            box = layout.box()
+            box.label(text="Set Collision Type:", icon='PHYSICS')
+            col = box.column(align=True)
+            
+            # Row 1
+            row = col.row(align=True)
+            op = row.operator("smb.set_collision_type", text="Solid")
+            op.collision_type = 'SOLID'
+            op = row.operator("smb.set_collision_type", text="One-Way")
+            op.collision_type = 'ONE_WAY'
+            
+            # Row 2
+            row = col.row(align=True)
+            op = row.operator("smb.set_collision_type", text="Breakable")
+            op.collision_type = 'BREAKABLE'
+            op = row.operator("smb.set_collision_type", text="Spring")
+            op.collision_type = 'SPRING'
+            
+            # Row 3
+            row = col.row(align=True)
+            op = row.operator("smb.set_collision_type", text="Enemy")
+            op.collision_type = 'ENEMY'
+            op = row.operator("smb.set_collision_type", text="Fire")
+            op.collision_type = 'FIRE'
+            
+            # Row 4
+            row = col.row(align=True)
+            op = row.operator("smb.set_collision_type", text="Water")
+            op.collision_type = 'WATER'
+            op = row.operator("smb.set_collision_type", text="Moving")
+            op.collision_type = 'MOVING'
             
             # List collision objects in scene
             layout.separator()
@@ -1285,10 +1599,20 @@ class SMB_PT_collision_panel(bpy.types.Panel):
                 if obj.get('smb_collision', False) or 'smb_collision' in obj.name.lower():
                     collision_count += 1
                     row = box.row()
-                    row.label(text=obj.name, icon='CUBE')
+                    col_type = obj.get('smb_collision_type', 'SOLID')
+                    row.label(text=f"{obj.name} [{col_type}]", icon='CUBE')
             
             if collision_count == 0:
                 box.label(text="No collision objects", icon='INFO')
+            
+            # Swimming settings
+            layout.separator()
+            box = layout.box()
+            box.label(text="Swimming Settings:", icon='MOD_FLUID')
+            col = box.column(align=True)
+            col.prop(props, "swim_gravity")
+            col.prop(props, "swim_speed")
+            col.prop(props, "swim_acceleration")
 
 
 # Registration
@@ -1302,6 +1626,7 @@ classes = [
     SMB_OT_delete_preset,
     SMB_OT_tag_collision,
     SMB_OT_untag_collision,
+    SMB_OT_set_collision_type,
     SMB_PT_physics_panel,
     SMB_PT_presets_panel,
     SMB_PT_driver_props_panel,
