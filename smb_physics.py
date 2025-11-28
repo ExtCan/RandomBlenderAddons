@@ -75,8 +75,9 @@ SMB_AIR_ACCEL_MULTIPLIER = 1.0  # SMB has full air control for acceleration
 SMB_JUMP_GRAVITY_MULTIPLIER = 0.5
 
 # Collision detection constants
-STANDING_TOLERANCE = 0.1  # Tolerance for detecting if player is standing on surface
-RAYCAST_GROUND_DISTANCE = 0.2  # Max distance for raycast ground detection
+STANDING_TOLERANCE = 0.15  # Tolerance for detecting if player is standing on surface
+RAYCAST_GROUND_DISTANCE = 0.3  # Max distance for raycast ground detection
+RAYCAST_GROUNDED_SNAP = 0.05  # Distance to snap player to ground when close
 
 
 # ==============================================================================
@@ -559,47 +560,99 @@ class SMBPhysicsEngine:
         
         # Check horizontal overlap (must be overlapping in X and Y for standing)
         if not (p_min_x <= o_max_x and p_max_x >= o_min_x):
-            return False
+            return False, 0
         if not (p_min_y <= o_max_y and p_max_y >= o_min_y):
-            return False
+            return False, 0
         
-        # Check if player bottom is near obstacle top
+        # Check if player bottom is near or at obstacle top
         if up_axis == 'Z':
             # Player's bottom should be at or near obstacle's top
-            return abs(p_min_z - o_max_z) < STANDING_TOLERANCE
+            distance = p_min_z - o_max_z
+            # Standing if player is on top (within tolerance) or slightly above
+            if distance >= -0.01 and distance < STANDING_TOLERANCE:
+                return True, distance
         else:  # Y is up
-            return abs(p_min_y - o_max_y) < STANDING_TOLERANCE
+            distance = p_min_y - o_max_y
+            if distance >= -0.01 and distance < STANDING_TOLERANCE:
+                return True, distance
+        
+        return False, 0
     
     @staticmethod
     def raycast_ground_check(context, obj, up_axis, max_distance=RAYCAST_GROUND_DISTANCE):
         """
         Use raycasting to check if player is standing on ground.
-        More accurate for complex mesh shapes.
-        Returns: (is_grounded, ground_object, hit_location)
+        Casts multiple rays from player base for better detection on complex shapes like stairs.
+        Returns: (is_grounded, ground_object, hit_location, closest_distance)
         """
         from mathutils import Vector
         
-        # Cast ray downward from player center
-        origin = obj.location.copy()
+        # Get player bounds for ray origins
+        bbox_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
         
-        # Ray direction is down along the up axis
         if up_axis == 'Z':
+            # Get the 4 bottom corners of the bounding box (lowest Z)
+            min_z = min(corner.z for corner in bbox_corners)
+            bottom_corners = [c for c in bbox_corners if abs(c.z - min_z) < 0.001]
             direction = Vector((0, 0, -1))
         else:
+            # Get the 4 bottom corners of the bounding box (lowest Y)
+            min_y = min(corner.y for corner in bbox_corners)
+            bottom_corners = [c for c in bbox_corners if abs(c.y - min_y) < 0.001]
             direction = Vector((0, -1, 0))
+        
+        # Calculate ray origins: center + 4 corners (inset slightly)
+        center = obj.location.copy()
+        
+        # Get player size for inset calculation
+        if len(bottom_corners) >= 2:
+            size_x = max(c.x for c in bottom_corners) - min(c.x for c in bottom_corners)
+            size_y = max(c.y for c in bottom_corners) - min(c.y for c in bottom_corners)
+            inset = 0.1  # Inset from edges
+            
+            ray_origins = [
+                center,  # Center
+                center + Vector((size_x/2 - inset, 0, 0)),   # Right
+                center + Vector((-size_x/2 + inset, 0, 0)),  # Left
+                center + Vector((0, size_y/2 - inset, 0)),   # Front
+                center + Vector((0, -size_y/2 + inset, 0)),  # Back
+            ]
+        else:
+            ray_origins = [center]
         
         # Use scene raycast
         depsgraph = context.evaluated_depsgraph_get()
-        result, location, normal, index, hit_obj, matrix = context.scene.ray_cast(
-            depsgraph, origin, direction, distance=max_distance
-        )
         
-        if result and hit_obj:
-            # Check if hit object is a collision object (property check is authoritative)
-            if hit_obj.get('smb_collision', False):
-                return True, hit_obj, location
+        closest_hit = None
+        closest_distance = float('inf')
+        closest_obj = None
         
-        return False, None, None
+        for origin in ray_origins:
+            result, location, normal, index, hit_obj, matrix = context.scene.ray_cast(
+                depsgraph, origin, direction, distance=max_distance
+            )
+            
+            if result and hit_obj:
+                # Check if hit object is a collision object
+                is_collision = (hit_obj.get('smb_collision', False) or 
+                               'smb_collision' in hit_obj.name.lower())
+                
+                if is_collision:
+                    # Calculate distance from player bottom to hit
+                    if up_axis == 'Z':
+                        dist = origin.z - location.z
+                    else:
+                        dist = origin.y - location.y
+                    
+                    if dist < closest_distance:
+                        closest_distance = dist
+                        closest_hit = location
+                        closest_obj = hit_obj
+        
+        if closest_obj is not None:
+            return True, closest_obj, closest_hit, closest_distance
+        
+        return False, None, None, float('inf')
     
     @staticmethod
     def get_collision_friction(obstacle):
@@ -780,6 +833,7 @@ class SMBPhysicsEngine:
         # Will be updated by collision detection
         was_grounded_last_frame = props.is_grounded
         ground_friction_mult = 1.0  # Default friction multiplier
+        ground_snap_distance = 0.0  # Distance to snap player to ground
         
         # Check if grounded (initial check - will be updated by collision)
         if effective_up_axis == 'Z':
@@ -791,13 +845,16 @@ class SMBPhysicsEngine:
         # This fixes the friction bug when standing on collision objects
         if props.enable_collision:
             if props.use_raycast_collision:
-                # Use raycast for more precise ground detection
-                is_on_ground, ground_obj, hit_loc = SMBPhysicsEngine.raycast_ground_check(
+                # Use raycast for more precise ground detection on complex shapes
+                is_on_ground, ground_obj, hit_loc, hit_distance = SMBPhysicsEngine.raycast_ground_check(
                     context, obj, effective_up_axis
                 )
-                if is_on_ground:
+                if is_on_ground and hit_distance < STANDING_TOLERANCE:
                     props.is_grounded = True
                     ground_friction_mult = SMBPhysicsEngine.get_collision_friction(ground_obj)
+                    # Snap player to ground if very close (prevents floating)
+                    if hit_distance > RAYCAST_GROUNDED_SNAP and hit_distance < STANDING_TOLERANCE:
+                        ground_snap_distance = hit_distance - RAYCAST_GROUNDED_SNAP
             else:
                 # Use AABB for ground detection
                 collision_objects = SMBPhysicsEngine.get_collision_objects(context, obj)
@@ -808,9 +865,13 @@ class SMBPhysicsEngine:
                     obstacle_bounds = SMBPhysicsEngine.get_object_bounds(obstacle)
                     
                     # Check if player is standing on this object
-                    if SMBPhysicsEngine.check_standing_on(player_bounds, obstacle_bounds, effective_up_axis):
+                    is_standing, distance = SMBPhysicsEngine.check_standing_on(player_bounds, obstacle_bounds, effective_up_axis)
+                    if is_standing:
                         props.is_grounded = True
                         ground_friction_mult = SMBPhysicsEngine.get_collision_friction(obstacle)
+                        # Snap player to surface if slightly above
+                        if distance > RAYCAST_GROUNDED_SNAP and distance < STANDING_TOLERANCE:
+                            ground_snap_distance = distance - RAYCAST_GROUNDED_SNAP
                         break
         
         # Check if in water
@@ -841,6 +902,15 @@ class SMBPhysicsEngine:
         else:
             pos_y += vertical_vel * delta_time
             props.velocity_y = vertical_vel
+        
+        # Apply ground snap if player is grounded but slightly above surface
+        if props.is_grounded and ground_snap_distance > 0:
+            if effective_up_axis == 'Z':
+                pos_z -= ground_snap_distance
+                props.velocity_z = 0
+            else:
+                pos_y -= ground_snap_distance
+                props.velocity_y = 0
         
         # Update position before collision detection
         obj.location.x = pos_x
