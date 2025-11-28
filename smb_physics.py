@@ -257,10 +257,20 @@ def update_player_custom_properties(obj, props):
     obj['smb_is_moving_left'] = 1.0 if props.input_left else 0.0
     obj['smb_is_moving_right'] = 1.0 if props.input_right else 0.0
     # Facing direction based on the configured forward axis
+    # Only update facing direction when there's actual movement
     horizontal_vel = props.velocity_x if props.forward_axis == 'X' else props.velocity_y
-    obj['smb_facing_direction'] = 1.0 if horizontal_vel >= 0 else -1.0
-    obj['smb_is_facing_left'] = 1.0 if horizontal_vel < 0 else 0.0
-    obj['smb_is_facing_right'] = 1.0 if horizontal_vel >= 0 else 0.0
+    
+    # Update facing direction only when moving (velocity > threshold)
+    velocity_threshold = 0.01  # Small threshold to ignore near-zero velocity
+    if abs(horizontal_vel) > velocity_threshold:
+        # Update the persistent facing direction based on movement
+        props.last_facing_direction = 1.0 if horizontal_vel > 0 else -1.0
+    
+    # Use the persistent facing direction for the properties
+    facing = props.last_facing_direction
+    obj['smb_facing_direction'] = facing
+    obj['smb_is_facing_left'] = 1.0 if facing < 0 else 0.0
+    obj['smb_is_facing_right'] = 1.0 if facing > 0 else 0.0
     obj['smb_physics_active'] = 1.0 if props.is_active else 0.0
 
 
@@ -286,6 +296,14 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
     is_running: bpy.props.BoolProperty(name="Is Running", default=False)
     is_skidding: bpy.props.BoolProperty(name="Is Skidding", default=False)
     is_falling: bpy.props.BoolProperty(name="Is Falling", default=False)
+    
+    # Persistent facing direction (1 = right, -1 = left)
+    # This persists when the player stops moving
+    last_facing_direction: bpy.props.FloatProperty(
+        name="Last Facing Direction",
+        description="Persistent facing direction (-1 = left, 1 = right)",
+        default=1.0
+    )
     
     # Input state (controlled via UI or keymap)
     input_left: bpy.props.BoolProperty(name="Move Left", default=False)
