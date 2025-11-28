@@ -554,27 +554,34 @@ class SMBPhysicsEngine:
     
     @staticmethod
     def check_standing_on(player_bounds, obstacle_bounds, up_axis):
-        """Check if player is standing on top of an obstacle (for grounded detection)"""
+        """Check if player is standing on top of an obstacle (for grounded detection)
+        
+        Returns: (is_standing, distance_to_ground)
+        - is_standing: True if player is on or very close to top of obstacle
+        - distance_to_ground: How far player bottom is from obstacle top (positive = above)
+        """
         p_min_x, p_max_x, p_min_y, p_max_y, p_min_z, p_max_z = player_bounds
         o_min_x, o_max_x, o_min_y, o_max_y, o_min_z, o_max_z = obstacle_bounds
         
         # Check horizontal overlap (must be overlapping in X and Y for standing)
-        if not (p_min_x <= o_max_x and p_max_x >= o_min_x):
+        # Use a generous overlap check
+        if not (p_min_x < o_max_x and p_max_x > o_min_x):
             return False, 0
-        if not (p_min_y <= o_max_y and p_max_y >= o_min_y):
+        if not (p_min_y < o_max_y and p_max_y > o_min_y):
             return False, 0
         
         # Check if player bottom is near or at obstacle top
         if up_axis == 'Z':
             # Player's bottom should be at or near obstacle's top
             distance = p_min_z - o_max_z
-            # Standing if player is on top (within tolerance) or slightly above
-            if distance >= -0.01 and distance < STANDING_TOLERANCE:
-                return True, distance
+            # Standing if player is on top (within generous tolerance)
+            # Allow slight overlap (-0.05) and up to STANDING_TOLERANCE above
+            if distance >= -0.05 and distance < STANDING_TOLERANCE:
+                return True, max(0, distance)
         else:  # Y is up
             distance = p_min_y - o_max_y
-            if distance >= -0.01 and distance < STANDING_TOLERANCE:
-                return True, distance
+            if distance >= -0.05 and distance < STANDING_TOLERANCE:
+                return True, max(0, distance)
         
         return False, 0
     
