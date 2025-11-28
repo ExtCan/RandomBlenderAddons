@@ -3,7 +3,7 @@
 # The selected object will be considered as the PLAYER
 
 import bpy
-import math
+import time
 from bpy.app.handlers import persistent
 
 bl_info = {
@@ -51,8 +51,9 @@ SMB_MAX_WALK_SPEED = 1.1875 * PIXEL_TO_BLENDER * 60
 SMB_MAX_RUN_SPEED = 2.5625 * PIXEL_TO_BLENDER * 60
 
 # Acceleration values
-# Walking acceleration: 0x0098 (0.59375 pixels/frame²)
-# Running acceleration: 0x00E4 (0.890625 pixels/frame²)
+# Walking acceleration: 0x0018 (0.09375 pixels/frame²) 
+# Running acceleration: 0x0024 (0.140625 pixels/frame²)
+# Note: These are per-frame acceleration values from the NES
 SMB_WALK_ACCEL = 0.09375 * PIXEL_TO_BLENDER * 60 * 60
 SMB_RUN_ACCEL = 0.140625 * PIXEL_TO_BLENDER * 60 * 60
 
@@ -217,6 +218,11 @@ class SMBPhysicsEngine:
         pos_z = obj.location.z
         
         # Determine which axes to use
+        # Prevent axis conflict: if forward_axis is Y, force up_axis to Z
+        effective_up_axis = props.up_axis
+        if props.forward_axis == 'Y' and props.up_axis == 'Y':
+            effective_up_axis = 'Z'
+        
         if props.forward_axis == 'X':
             horizontal_pos = pos_x
             horizontal_vel = props.velocity_x
@@ -224,7 +230,7 @@ class SMBPhysicsEngine:
             horizontal_pos = pos_y
             horizontal_vel = props.velocity_y
             
-        if props.up_axis == 'Z':
+        if effective_up_axis == 'Z':
             vertical_pos = pos_z
             vertical_vel = props.velocity_z
         else:
@@ -252,7 +258,7 @@ class SMBPhysicsEngine:
             pos_y += horizontal_vel * delta_time
             props.velocity_y = horizontal_vel
             
-        if props.up_axis == 'Z':
+        if effective_up_axis == 'Z':
             pos_z += vertical_vel * delta_time
             props.velocity_z = vertical_vel
         else:
@@ -260,7 +266,7 @@ class SMBPhysicsEngine:
             props.velocity_y = vertical_vel
         
         # Ground collision
-        if props.up_axis == 'Z':
+        if effective_up_axis == 'Z':
             if pos_z < props.ground_level:
                 pos_z = props.ground_level
                 props.velocity_z = 0
@@ -387,7 +393,6 @@ class SMB_OT_start_physics(bpy.types.Operator):
             return {'CANCELLED'}
         
         if event.type == 'TIMER':
-            import time
             current_time = time.time()
             if self._last_time is not None:
                 delta_time = min(current_time - self._last_time, 0.1)  # Cap delta to prevent physics explosion
@@ -399,15 +404,27 @@ class SMB_OT_start_physics(bpy.types.Operator):
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
         
-        # Handle keyboard input for movement
+        # Handle keyboard input for movement (PRESS sets True, RELEASE sets False)
         if event.type == 'LEFT_ARROW':
-            props.input_left = (event.value == 'PRESS')
+            if event.value == 'PRESS':
+                props.input_left = True
+            elif event.value == 'RELEASE':
+                props.input_left = False
         elif event.type == 'RIGHT_ARROW':
-            props.input_right = (event.value == 'PRESS')
+            if event.value == 'PRESS':
+                props.input_right = True
+            elif event.value == 'RELEASE':
+                props.input_right = False
         elif event.type == 'SPACE':
-            props.input_jump = (event.value == 'PRESS')
+            if event.value == 'PRESS':
+                props.input_jump = True
+            elif event.value == 'RELEASE':
+                props.input_jump = False
         elif event.type == 'LEFT_SHIFT':
-            props.input_run = (event.value == 'PRESS')
+            if event.value == 'PRESS':
+                props.input_run = True
+            elif event.value == 'RELEASE':
+                props.input_run = False
         elif event.type in {'ESC'}:
             props.is_active = False
             self.cancel(context)
