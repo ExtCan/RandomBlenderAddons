@@ -74,6 +74,10 @@ SMB_AIR_ACCEL_MULTIPLIER = 1.0  # SMB has full air control for acceleration
 # When holding jump: gravity is halved until peak or button release
 SMB_JUMP_GRAVITY_MULTIPLIER = 0.5
 
+# Collision detection constants
+STANDING_TOLERANCE = 0.1  # Tolerance for detecting if player is standing on surface
+RAYCAST_GROUND_DISTANCE = 0.2  # Max distance for raycast ground detection
+
 
 # ==============================================================================
 # Built-in Physics Presets
@@ -255,6 +259,8 @@ def update_player_custom_properties(obj, props):
     # Facing direction based on the configured forward axis
     horizontal_vel = props.velocity_x if props.forward_axis == 'X' else props.velocity_y
     obj['smb_facing_direction'] = 1.0 if horizontal_vel >= 0 else -1.0
+    obj['smb_is_facing_left'] = 1.0 if horizontal_vel < 0 else 0.0
+    obj['smb_is_facing_right'] = 1.0 if horizontal_vel >= 0 else 0.0
     obj['smb_physics_active'] = 1.0 if props.is_active else 0.0
 
 
@@ -307,6 +313,12 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
         description="Extra padding around collision boxes",
         default=0.01,
         min=0.0
+    )
+    
+    use_raycast_collision: bpy.props.BoolProperty(
+        name="Use Raycast Collision",
+        description="Use raycasting for more precise collision (slower but more accurate for complex shapes)",
+        default=False
     )
     
     # Customizable physics values (defaulting to accurate SMB values)
@@ -522,6 +534,62 @@ class SMBPhysicsEngine:
         return False
     
     @staticmethod
+    def check_standing_on(player_bounds, obstacle_bounds, up_axis):
+        """Check if player is standing on top of an obstacle (for grounded detection)"""
+        p_min_x, p_max_x, p_min_y, p_max_y, p_min_z, p_max_z = player_bounds
+        o_min_x, o_max_x, o_min_y, o_max_y, o_min_z, o_max_z = obstacle_bounds
+        
+        # Check horizontal overlap (must be overlapping in X and Y for standing)
+        if not (p_min_x <= o_max_x and p_max_x >= o_min_x):
+            return False
+        if not (p_min_y <= o_max_y and p_max_y >= o_min_y):
+            return False
+        
+        # Check if player bottom is near obstacle top
+        if up_axis == 'Z':
+            # Player's bottom should be at or near obstacle's top
+            return abs(p_min_z - o_max_z) < STANDING_TOLERANCE
+        else:  # Y is up
+            return abs(p_min_y - o_max_y) < STANDING_TOLERANCE
+    
+    @staticmethod
+    def raycast_ground_check(context, obj, up_axis, max_distance=RAYCAST_GROUND_DISTANCE):
+        """
+        Use raycasting to check if player is standing on ground.
+        More accurate for complex mesh shapes.
+        Returns: (is_grounded, ground_object, hit_location)
+        """
+        from mathutils import Vector
+        
+        # Cast ray downward from player center
+        origin = obj.location.copy()
+        
+        # Ray direction is down along the up axis
+        if up_axis == 'Z':
+            direction = Vector((0, 0, -1))
+        else:
+            direction = Vector((0, -1, 0))
+        
+        # Use scene raycast
+        depsgraph = context.evaluated_depsgraph_get()
+        result, location, normal, index, hit_obj, matrix = context.scene.ray_cast(
+            depsgraph, origin, direction, distance=max_distance
+        )
+        
+        if result and hit_obj:
+            # Check if hit object is a collision object (property check is authoritative)
+            if hit_obj.get('smb_collision', False):
+                return True, hit_obj, location
+        
+        return False, None, None
+    
+    @staticmethod
+    def get_collision_friction(obstacle):
+        """Get friction multiplier from collision object"""
+        # Default friction is 1.0 (normal friction)
+        return obstacle.get('smb_friction', 1.0)
+    
+    @staticmethod
     def resolve_collision(player_bounds, obstacle_bounds, velocity, forward_axis, up_axis, collision_type='SOLID'):
         """
         Resolve collision between player and obstacle.
@@ -690,19 +758,50 @@ class SMBPhysicsEngine:
         else:
             vertical_vel = props.velocity_y
         
-        # Check if grounded (will be updated by collision)
+        # Store last frame's grounded state for this frame's physics
+        # Will be updated by collision detection
+        was_grounded_last_frame = props.is_grounded
+        ground_friction_mult = 1.0  # Default friction multiplier
+        
+        # Check if grounded (initial check - will be updated by collision)
         if effective_up_axis == 'Z':
             props.is_grounded = pos_z <= props.ground_level + 0.01
         else:
             props.is_grounded = pos_y <= props.ground_level + 0.01
         
+        # Pre-check collision for grounded state BEFORE applying horizontal physics
+        # This fixes the friction bug when standing on collision objects
+        if props.enable_collision:
+            if props.use_raycast_collision:
+                # Use raycast for more precise ground detection
+                is_on_ground, ground_obj, hit_loc = SMBPhysicsEngine.raycast_ground_check(
+                    context, obj, effective_up_axis
+                )
+                if is_on_ground:
+                    props.is_grounded = True
+                    ground_friction_mult = SMBPhysicsEngine.get_collision_friction(ground_obj)
+            else:
+                # Use AABB for ground detection
+                collision_objects = SMBPhysicsEngine.get_collision_objects(context, obj)
+                for obstacle, collision_type in collision_objects:
+                    if collision_type == 'WATER':
+                        continue
+                    player_bounds = SMBPhysicsEngine.get_object_bounds(obj)
+                    obstacle_bounds = SMBPhysicsEngine.get_object_bounds(obstacle)
+                    
+                    # Check if player is standing on this object
+                    if SMBPhysicsEngine.check_standing_on(player_bounds, obstacle_bounds, effective_up_axis):
+                        props.is_grounded = True
+                        ground_friction_mult = SMBPhysicsEngine.get_collision_friction(obstacle)
+                        break
+        
         # Check if in water
         was_swimming = props.is_swimming
         props.is_swimming = SMBPhysicsEngine.check_in_water(context, obj, props)
         
-        # Horizontal movement (modified for swimming)
+        # Horizontal movement (now with correct grounded state for friction)
         horizontal_vel = SMBPhysicsEngine.update_horizontal(
-            props, horizontal_vel, delta_time
+            props, horizontal_vel, delta_time, ground_friction_mult
         )
         
         # Vertical movement (jumping/gravity/swimming)
@@ -806,7 +905,7 @@ class SMBPhysicsEngine:
         update_player_custom_properties(obj, props)
     
     @staticmethod
-    def update_horizontal(props, velocity, delta_time):
+    def update_horizontal(props, velocity, delta_time, friction_multiplier=1.0):
         """Update horizontal velocity based on input"""
         # Determine target direction
         direction = 0
@@ -871,9 +970,9 @@ class SMBPhysicsEngine:
         else:
             # No input - not skidding
             props.is_skidding = False
-            # Apply friction
+            # Apply friction (with surface friction multiplier)
             if props.is_grounded:
-                friction = props.friction * delta_time
+                friction = props.friction * friction_multiplier * delta_time
                 if velocity > 0:
                     velocity = max(0, velocity - friction)
                 elif velocity < 0:
@@ -1467,6 +1566,8 @@ class SMB_PT_driver_props_panel(bpy.types.Panel):
             ('smb_is_swimming', 'Is Swimming (0/1)'),
             ('smb_is_moving_left', 'Moving Left (0/1)'),
             ('smb_is_moving_right', 'Moving Right (0/1)'),
+            ('smb_is_facing_left', 'Facing Left (0/1)'),
+            ('smb_is_facing_right', 'Facing Right (0/1)'),
             ('smb_facing_direction', 'Facing Direction (-1/1)'),
             ('smb_physics_active', 'Physics Active (0/1)'),
         ]
@@ -1562,6 +1663,7 @@ class SMB_PT_collision_panel(bpy.types.Panel):
         
         if props.enable_collision:
             layout.prop(props, "collision_padding")
+            layout.prop(props, "use_raycast_collision")
             
             layout.separator()
             
@@ -1607,6 +1709,13 @@ class SMB_PT_collision_panel(bpy.types.Panel):
             op = row.operator("smb.set_collision_type", text="Moving")
             op.collision_type = 'MOVING'
             
+            # Surface friction info
+            layout.separator()
+            box = layout.box()
+            box.label(text="Surface Friction:", icon='FORCE_DRAG')
+            box.label(text="Set 'smb_friction' property on objects")
+            box.label(text="Default: 1.0 (normal), 0.5 (icy), 2.0 (sticky)")
+            
             # List collision objects in scene
             layout.separator()
             box = layout.box()
@@ -1618,7 +1727,8 @@ class SMB_PT_collision_panel(bpy.types.Panel):
                     collision_count += 1
                     row = box.row()
                     col_type = obj.get('smb_collision_type', 'SOLID')
-                    row.label(text=f"{obj.name} [{col_type}]", icon='CUBE')
+                    friction = obj.get('smb_friction', 1.0)
+                    row.label(text=f"{obj.name} [{col_type}] F:{friction:.1f}", icon='CUBE')
             
             if collision_count == 0:
                 box.label(text="No collision objects", icon='INFO')
