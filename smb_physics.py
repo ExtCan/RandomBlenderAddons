@@ -247,6 +247,8 @@ def update_player_custom_properties(obj, props):
     obj['smb_is_grounded'] = 1.0 if props.is_grounded else 0.0
     obj['smb_is_jumping'] = 1.0 if props.is_jumping else 0.0
     obj['smb_is_running'] = 1.0 if props.is_running else 0.0
+    obj['smb_is_skidding'] = 1.0 if props.is_skidding else 0.0
+    obj['smb_is_falling'] = 1.0 if props.is_falling else 0.0
     obj['smb_is_swimming'] = 1.0 if props.is_swimming else 0.0
     obj['smb_is_moving_left'] = 1.0 if props.input_left else 0.0
     obj['smb_is_moving_right'] = 1.0 if props.input_right else 0.0
@@ -276,6 +278,8 @@ class SMBPhysicsProperties(bpy.types.PropertyGroup):
     is_jumping: bpy.props.BoolProperty(name="Is Jumping", default=False)
     jump_held: bpy.props.BoolProperty(name="Jump Held", default=False)
     is_running: bpy.props.BoolProperty(name="Is Running", default=False)
+    is_skidding: bpy.props.BoolProperty(name="Is Skidding", default=False)
+    is_falling: bpy.props.BoolProperty(name="Is Falling", default=False)
     
     # Input state (controlled via UI or keymap)
     input_left: bpy.props.BoolProperty(name="Move Left", default=False)
@@ -847,6 +851,7 @@ class SMBPhysicsEngine:
         if direction != 0:
             # Check if skidding (moving opposite to velocity)
             is_skidding = (velocity > 0 and direction < 0) or (velocity < 0 and direction > 0)
+            props.is_skidding = is_skidding and props.is_grounded  # Only skid when grounded
             
             if is_skidding:
                 # Apply skid deceleration
@@ -856,13 +861,17 @@ class SMBPhysicsEngine:
                 else:
                     velocity = min(0, velocity + decel)
             else:
+                # Not skidding - clear the flag
+                props.is_skidding = False
                 # Apply acceleration
                 velocity += direction * acceleration * delta_time
                 
                 # Clamp to max speed
                 velocity = max(-max_speed, min(max_speed, velocity))
         else:
-            # No input - apply friction
+            # No input - not skidding
+            props.is_skidding = False
+            # Apply friction
             if props.is_grounded:
                 friction = props.friction * delta_time
                 if velocity > 0:
@@ -916,6 +925,11 @@ class SMBPhysicsEngine:
             
             # Cap at terminal velocity
             velocity = max(-props.terminal_velocity, velocity)
+            
+            # Update is_falling (falling = not grounded and moving downward)
+            props.is_falling = velocity < 0
+        else:
+            props.is_falling = False
         
         return velocity
 
@@ -1333,6 +1347,8 @@ class SMB_PT_physics_panel(bpy.types.Panel):
             col.label(text=f"Grounded: {'Yes' if props.is_grounded else 'No'}")
             col.label(text=f"Jumping: {'Yes' if props.is_jumping else 'No'}")
             col.label(text=f"Running: {'Yes' if props.is_running else 'No'}")
+            col.label(text=f"Skidding: {'Yes' if props.is_skidding else 'No'}")
+            col.label(text=f"Falling: {'Yes' if props.is_falling else 'No'}")
             col.label(text=f"Swimming: {'Yes' if props.is_swimming else 'No'}")
             
             # Show velocity
@@ -1446,6 +1462,8 @@ class SMB_PT_driver_props_panel(bpy.types.Panel):
             ('smb_is_grounded', 'Is Grounded (0/1)'),
             ('smb_is_jumping', 'Is Jumping (0/1)'),
             ('smb_is_running', 'Is Running (0/1)'),
+            ('smb_is_skidding', 'Is Skidding (0/1)'),
+            ('smb_is_falling', 'Is Falling (0/1)'),
             ('smb_is_swimming', 'Is Swimming (0/1)'),
             ('smb_is_moving_left', 'Moving Left (0/1)'),
             ('smb_is_moving_right', 'Moving Right (0/1)'),
