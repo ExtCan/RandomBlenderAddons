@@ -201,7 +201,7 @@ class MATERIAL_PT_pipeline(MaterialButtonsPanel, Panel):
         return mat and (not simple_material(mat)) and (mat.type in {'SURFACE', 'WIRE', 'VOLUME'}) and (engine in cls.COMPAT_ENGINES)
 
     def draw(self, context):
-        layout = self. layout
+        layout = self.layout
 
         mat = context.material
         mat_type = mat.type in {'SURFACE', 'WIRE'}
