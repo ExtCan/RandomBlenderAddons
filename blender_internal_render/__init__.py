@@ -58,6 +58,7 @@ from bpy.props import BoolProperty
 
 # Import UI modules
 from . import (
+    render_engine,
     ui_render,
     ui_render_layer,
     ui_material,
@@ -92,6 +93,7 @@ class BlenderInternalPreferences(AddonPreferences):
 
 # Module management
 modules = [
+    render_engine,
     ui_render,
     ui_render_layer,
     ui_material,
