@@ -216,6 +216,22 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
                     base_color[1] * light_color[1],
                     base_color[2] * light_color[2]
                 ))
+            
+            elif light.type == 'SPOT':
+                # Spot light (simplified directional with energy)
+                light_dir = Vector((0, 0, -1))
+                light_dir = light_obj.matrix_world.to_3x3() @ light_dir
+                light_dir.normalize()
+                
+                # Calculate diffuse
+                diff = max(0, normal.dot(-light_dir))
+                light_color = Vector(light.color) * light.energy * 0.7
+                
+                final_color += Vector((
+                    base_color[0] * light_color[0] * diff,
+                    base_color[1] * light_color[1] * diff,
+                    base_color[2] * light_color[2] * diff
+                ))
         
         # Clamp values
         return Vector((
@@ -300,7 +316,7 @@ class RENDER_PT_blender_internal(bpy.types.Panel):
         col.label(text="Features:")
         col.label(text="- Basic material support")
         col.label(text="- Diffuse and specular shading")
-        col.label(text="- Point and Sun lights")
+        col.label(text="- Point, Sun, and Spot lights")
         col.label(text="- Simple scanline rasterization")
 
 
