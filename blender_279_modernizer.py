@@ -123,9 +123,11 @@ class OBJECT_OT_add_to_collection(Operator):
             group = bpy.data.groups.new(name=self.collection_name)
         
         # Add selected objects to group
+        # Get existing object names for efficient lookup
+        existing_names = {obj.name for obj in group.objects}
         added_count = 0
         for obj in context.selected_objects:
-            if obj.name not in group.objects:
+            if obj.name not in existing_names:
                 group.objects.link(obj)
                 added_count += 1
         
@@ -153,10 +155,12 @@ class OBJECT_OT_remove_from_collection(Operator):
             return {'CANCELLED'}
         
         group = bpy.data.groups[self.collection_name]
+        # Get existing object names for efficient lookup
+        existing_names = {obj.name for obj in group.objects}
         removed_count = 0
         
         for obj in context.selected_objects:
-            if obj.name in group.objects:
+            if obj.name in existing_names:
                 group.objects.unlink(obj)
                 removed_count += 1
         
@@ -330,10 +334,12 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     
-    # Register keymaps after a delay to ensure preferences are available
+    # Register keymaps after ensuring preferences are available
     try:
         register_keymaps()
-    except:
+    except (AttributeError, KeyError, TypeError) as e:
+        # Keymap registration may fail if preferences aren't ready yet
+        # This is expected on initial load and can be safely ignored
         pass
 
 
