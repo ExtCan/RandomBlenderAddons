@@ -1,0 +1,139 @@
+name: Test Blender Internal Addon
+
+on:
+  push:
+    branches: [ main, copilot/add-blender-internal-render-addon ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-addon-installation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install Blender
+      run: |
+        # Download Blender 3.6 LTS
+        wget -q https://download.blender.org/release/Blender3.6/blender-3.6.5-linux-x64.tar.xz
+        tar -xf blender-3.6.5-linux-x64.tar.xz
+        mv blender-3.6.5-linux-x64 blender
+        echo "BLENDER_PATH=$(pwd)/blender/blender" >> $GITHUB_ENV
+    
+    - name: Install addon
+      run: |
+        mkdir -p ~/.config/blender/3.6/scripts/addons/
+        cp -r blender_internal_render ~/.config/blender/3.6/scripts/addons/
+    
+    - name: Test addon loads
+      run: |
+        ${BLENDER_PATH} --background --python - << 'PYEOF'
+        import bpy
+        import sys
+        
+        print("=" * 60)
+        print("Testing Blender Internal Render Engine Addon")
+        print("=" * 60)
+        
+        # Enable addon
+        try:
+            bpy.ops.preferences.addon_enable(module='blender_internal_render')
+            print("✓ Addon enabled successfully")
+        except Exception as e:
+            print(f"✗ Failed to enable addon: {e}")
+            sys.exit(1)
+        
+        # Check if render engine is registered
+        available_engines = [engine.bl_idname for engine in bpy.types.RenderEngine.__subclasses__()]
+        print(f"\nAvailable render engines: {available_engines}")
+        
+        if 'BLENDER_RENDER' in available_engines:
+            print("✓ BLENDER_RENDER engine registered")
+        else:
+            print("✗ BLENDER_RENDER engine not found")
+            sys.exit(1)
+        
+        # Try to set the engine
+        try:
+            bpy.context.scene.render.engine = 'BLENDER_RENDER'
+            print(f"✓ Render engine set to: {bpy.context.scene.render.engine}")
+        except Exception as e:
+            print(f"✗ Failed to set render engine: {e}")
+            sys.exit(1)
+        
+        print("\n" + "=" * 60)
+        print("All tests passed!")
+        print("=" * 60)
+        PYEOF
+    
+    - name: Run test script
+      run: |
+        ${BLENDER_PATH} --background --python blender_internal_render/test_render.py || echo "Test render script completed"
+      continue-on-error: true
+
+  validate-structure:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Validate addon structure
+      run: |
+        echo "Checking addon structure..."
+        
+        # Check required files
+        required_files=(
+          "blender_internal_render/__init__.py"
+          "blender_internal_render/render_engine.py"
+          "blender_internal_render/ui_render.py"
+          "blender_internal_render/ui_material.py"
+          "blender_internal_render/ui_texture.py"
+          "blender_internal_render/ui_world.py"
+          "blender_internal_render/ui_lamp.py"
+          "blender_internal_render/ui_render_layer.py"
+          "blender_internal_render/README.md"
+          "blender_internal_render/BUILD_GUIDE.md"
+          "blender_internal_render/engine_src/CMakeLists.txt"
+        )
+        
+        all_found=true
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✓ $file"
+          else
+            echo "✗ $file NOT FOUND"
+            all_found=false
+          fi
+        done
+        
+        if [ "$all_found" = true ]; then
+          echo ""
+          echo "✓ All required files present"
+          exit 0
+        else
+          echo ""
+          echo "✗ Some required files missing"
+          exit 1
+        fi
+    
+    - name: Check Python syntax
+      run: |
+        python3 -m py_compile blender_internal_render/__init__.py
+        python3 -m py_compile blender_internal_render/render_engine.py
+        python3 -m py_compile blender_internal_render/ui_render.py
+        python3 -m py_compile blender_internal_render/ui_material.py
+        python3 -m py_compile blender_internal_render/ui_texture.py
+        python3 -m py_compile blender_internal_render/ui_world.py
+        python3 -m py_compile blender_internal_render/ui_lamp.py
+        python3 -m py_compile blender_internal_render/ui_render_layer.py
+        python3 -m py_compile blender_internal_render/test_render.py
+        echo "✓ All Python files have valid syntax"

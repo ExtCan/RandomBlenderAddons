@@ -1,0 +1,337 @@
+name: Build Blender Internal Render Engine
+
+on:
+  push:
+    branches: [ main, copilot/add-blender-internal-render-addon ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        blender_version: ["3.6", "4.0"]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential python3-dev git
+    
+    - name: Clone Blender source (headers only)
+      run: |
+        cd /tmp
+        git clone --depth 1 --branch v${{ matrix.blender_version }}.0 https://github.com/blender/blender.git || \
+        git clone --depth 1 https://github.com/blender/blender.git
+        echo "BLENDER_SOURCE=/tmp/blender" >> $GITHUB_ENV
+    
+    - name: Build native render engine
+      run: |
+        cd blender_internal_render/engine_src
+        mkdir -p build
+        cd build
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
+          -DBLENDER_INCLUDE_DIR=${BLENDER_SOURCE}/source \
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release -j $(nproc); then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.so" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.so || echo "No .so file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+    
+    - name: Package addon
+      run: |
+        # Create a clean package without build artifacts
+        mkdir -p package
+        cp -r blender_internal_render package/
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.so package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        
+        # Create zip in workspace root
+        cd package
+        zip -r ../blender_internal_render-linux-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-linux-blender${{ matrix.blender_version }}.zip
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: blender-internal-render-linux-blender${{ matrix.blender_version }}
+        path: blender_internal_render-linux-blender${{ matrix.blender_version }}.zip
+        retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        blender_version: ["3.6", "4.0"]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        choco install cmake
+    
+    - name: Clone Blender source (headers only)
+      shell: bash
+      run: |
+        cd /c/
+        git clone --depth 1 --branch v${{ matrix.blender_version }}.0 https://github.com/blender/blender.git || \
+        git clone --depth 1 https://github.com/blender/blender.git
+        echo "BLENDER_SOURCE=C:/blender" >> $GITHUB_ENV
+    
+    - name: Build native render engine
+      shell: bash
+      run: |
+        cd blender_internal_render/engine_src
+        mkdir -p build
+        cd build
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
+          -G "Visual Studio 17 2022" \
+          -A x64 \
+          -DBLENDER_INCLUDE_DIR="${BLENDER_SOURCE}/source" \
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release; then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.pyd" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.pyd || echo "No .pyd file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+    
+    - name: Package addon
+      shell: bash
+      run: |
+        # Create a clean package without build artifacts
+        mkdir -p package
+        cp -r blender_internal_render package/
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.pyd package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        
+        # Create zip in workspace root
+        cd package
+        7z a -tzip ../blender_internal_render-windows-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-windows-blender${{ matrix.blender_version }}.zip
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: blender-internal-render-windows-blender${{ matrix.blender_version }}
+        path: blender_internal_render-windows-blender${{ matrix.blender_version }}.zip
+        retention-days: 30
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        blender_version: ["3.6", "4.0"]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        brew install cmake
+    
+    - name: Clone Blender source (headers only)
+      run: |
+        cd /tmp
+        git clone --depth 1 --branch v${{ matrix.blender_version }}.0 https://github.com/blender/blender.git || \
+        git clone --depth 1 https://github.com/blender/blender.git
+        echo "BLENDER_SOURCE=/tmp/blender" >> $GITHUB_ENV
+    
+    - name: Build native render engine
+      run: |
+        cd blender_internal_render/engine_src
+        mkdir -p build
+        cd build
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
+          -DBLENDER_INCLUDE_DIR=${BLENDER_SOURCE}/source \
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release -j $(sysctl -n hw.ncpu); then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.so" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.so || echo "No .so file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+    
+    - name: Package addon
+      run: |
+        # Create a clean package without build artifacts
+        mkdir -p package
+        cp -r blender_internal_render package/
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.so package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        
+        # Create zip in workspace root
+        cd package
+        zip -r ../blender_internal_render-macos-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-macos-blender${{ matrix.blender_version }}.zip
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: blender-internal-render-macos-blender${{ matrix.blender_version }}
+        path: blender_internal_render-macos-blender${{ matrix.blender_version }}.zip
+        retention-days: 30
+
+  create-release-info:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Create release info
+      run: |
+        cat > ARTIFACTS_README.md << 'EOF'
+        # Blender Internal Render Engine - Test Artifacts
+        
+        This build contains the Blender Internal render engine addon for testing.
+        
+        ## Installation
+        
+        1. Download the appropriate artifact for your platform and Blender version
+        2. Extract the zip file
+        3. Copy the `blender_internal_render` folder to your Blender addons directory:
+           - **Linux**: `~/.config/blender/X.X/scripts/addons/`
+           - **macOS**: `~/Library/Application Support/Blender/X.X/scripts/addons/`
+           - **Windows**: `%APPDATA%\Blender Foundation\Blender\X.X\scripts\addons\`
+        4. Open Blender → Edit → Preferences → Add-ons
+        5. Search for "Blender Internal"
+        6. Enable the addon
+        
+        ## What's Included
+        
+        - ✅ All UI panels from Blender 2.79
+        - ✅ Python fallback renderer (works immediately)
+        - ✅ Original C/C++ source code (for optional compilation)
+        - ✅ Build system and documentation
+        
+        ## Note
+        
+        These artifacts include the **Python fallback renderer** which works immediately without compilation.
+        For best performance, you can optionally compile the native engine following the BUILD_GUIDE.md included in the addon.
+        
+        ## Testing
+        
+        1. Set Render Engine to "Blender Internal" in Scene Properties
+        2. Configure materials in Material Properties
+        3. Add lights to your scene
+        4. Press F12 to render
+        5. Check the console to see if native or fallback mode is active
+        
+        ## Feedback
+        
+        Please report any issues on the GitHub repository.
+        EOF
+        
+        cat ARTIFACTS_README.md
+    
+    - name: Upload release info
+      uses: actions/upload-artifact@v4
+      with:
+        name: ARTIFACTS_README
+        path: ARTIFACTS_README.md
+        retention-days: 30
