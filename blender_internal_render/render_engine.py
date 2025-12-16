@@ -28,13 +28,20 @@ The engine can work in two modes:
 """
 
 import bpy
-import numpy as np
 from mathutils import Vector, Matrix, Color
 import math
 from concurrent.futures import ThreadPoolExecutor
 import time
 import os
 import sys
+
+# Try to import numpy - it's included with Blender but import might fail
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    print("Warning: NumPy not available, some render features will be limited")
 
 # Try to import the native render engine module
 NATIVE_ENGINE_AVAILABLE = False
@@ -53,6 +60,28 @@ try:
 except ImportError as e:
     print(f"Native render engine not available, using Python fallback: {e}")
     NATIVE_ENGINE_AVAILABLE = False
+
+
+def create_pixel_array(height, width, channels=4):
+    """Create a pixel array, using numpy if available or pure Python list"""
+    if HAS_NUMPY:
+        return np.zeros((height, width, channels), dtype=np.float32)
+    else:
+        # Pure Python fallback - create nested lists
+        return [[[0.0] * channels for _ in range(width)] for _ in range(height)]
+
+
+def flatten_pixels(pixels):
+    """Flatten pixel array to list for Blender, handling both numpy and pure Python"""
+    if HAS_NUMPY and isinstance(pixels, np.ndarray):
+        return pixels.flatten().tolist()
+    else:
+        # Pure Python - flatten nested lists
+        result = []
+        for row in pixels:
+            for pixel in row:
+                result.extend(pixel)
+        return result
 
 
 class BlenderInternalRenderEngine(bpy.types.RenderEngine):
@@ -106,11 +135,11 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
             self.report({'INFO'}, "Native render engine called")
             
             # For now, just fill with a test pattern
-            pixels = np.zeros((self.size_y, self.size_x, 4), dtype=np.float32)
+            pixels = create_pixel_array(self.size_y, self.size_x, 4)
             for y in range(self.size_y):
                 for x in range(self.size_x):
-                    pixels[y, x] = [0.2, 0.6, 0.2, 1.0]  # Green tint for native
-            layer.rect = pixels.flatten().tolist()
+                    pixels[y][x] = [0.2, 0.6, 0.2, 1.0]  # Green tint for native
+            layer.rect = flatten_pixels(pixels)
             
         except Exception as e:
             self.report({'ERROR'}, f"Native render error: {str(e)}")
@@ -150,15 +179,15 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
     def render_preview(self, depsgraph, layer):
         """Fast preview rendering"""
         # Create a simple gradient or solid color for preview
-        pixels = np.zeros((self.size_y, self.size_x, 4), dtype=np.float32)
+        pixels = create_pixel_array(self.size_y, self.size_x, 4)
         
         # Simple gradient background
         for y in range(self.size_y):
             for x in range(self.size_x):
-                pixels[y, x] = [0.5, 0.5, 0.6, 1.0]  # Grayish-blue
+                pixels[y][x] = [0.5, 0.5, 0.6, 1.0]  # Grayish-blue
         
         # Flatten and set pixels
-        layer.rect = pixels.flatten().tolist()
+        layer.rect = flatten_pixels(pixels)
     
     def render_scene(self, depsgraph, layer):
         """Full scene rendering with ray tracing"""
@@ -172,7 +201,7 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
             return
         
         # Initialize pixel buffer
-        pixels = np.zeros((self.size_y, self.size_x, 4), dtype=np.float32)
+        pixels = create_pixel_array(self.size_y, self.size_x, 4)
         
         # Setup camera matrices
         cam_matrix = camera.matrix_world
@@ -220,7 +249,7 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
                     depsgraph, max_depth=2
                 )
                 
-                pixels[self.size_y - 1 - y, x] = [color[0], color[1], color[2], 1.0]
+                pixels[self.size_y - 1 - y][x] = [color[0], color[1], color[2], 1.0]
                 
                 pixels_done += 1
                 if pixels_done % update_frequency == 0:
@@ -229,7 +258,7 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
                     self.update_stats("Rendering", f"Pixel {pixels_done}/{total_pixels}")
         
         # Set final pixels
-        layer.rect = pixels.flatten().tolist()
+        layer.rect = flatten_pixels(pixels)
     
     def build_scene_geometry(self, depsgraph, objects):
         """Build scene geometry data structure for ray tracing"""
