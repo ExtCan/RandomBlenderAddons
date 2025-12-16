@@ -48,7 +48,8 @@ This addon reimplements the classic **Blender Internal** render engine that was 
 
 #### Lights
 - **Sun Light**: Directional lighting with proper normal-based diffuse shading
-- **Point Light**: Omnidirectional light source
+- **Point Light**: Omnidirectional light source with distance-based directional shading
+- **Spot Light**: Directional spotlight with diffuse shading
 - Light color and energy are respected
 
 #### Camera
@@ -126,7 +127,7 @@ Potential enhancements for future versions:
 - Shadow support
 - Texture mapping
 - Better anti-aliasing
-- More light types (Spot, Area)
+- Area lights
 - Specular highlights
 - Transparency and alpha blending
 - Ambient Occlusion

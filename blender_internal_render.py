@@ -153,8 +153,11 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
             # Calculate face normal in world space
             normal = poly.normal
             
+            # Calculate polygon center in world space for point light calculations
+            poly_center = sum((mesh.vertices[i].co for i in poly.vertices), Vector((0, 0, 0))) / len(poly.vertices)
+            
             # Calculate lighting
-            lit_color = self.calculate_lighting(base_color, normal, lights, matrix)
+            lit_color = self.calculate_lighting(base_color, normal, poly_center, lights, matrix)
             
             # Rasterize triangle (simplified)
             self.rasterize_polygon(cam_verts, lit_color, pixels)
@@ -174,7 +177,7 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
         
         return Vector((0.8, 0.8, 0.8))
 
-    def calculate_lighting(self, base_color, normal, lights, matrix):
+    def calculate_lighting(self, base_color, normal, poly_center, lights, matrix):
         """Calculate lighting for a surface"""
         if not lights:
             # No lights, return ambient
@@ -209,12 +212,18 @@ class BlenderInternalRenderEngine(bpy.types.RenderEngine):
                 ))
             
             elif light.type == 'POINT':
-                # Point light (simplified, no distance attenuation here)
+                # Point light - calculate direction from surface to light
+                light_pos = light_obj.matrix_world.translation
+                light_dir = (light_pos - poly_center).normalized()
+                
+                # Calculate diffuse with proper directional lighting
+                diff = max(0, normal.dot(light_dir))
                 light_color = Vector(light.color) * light.energy * 0.5
+                
                 final_color += Vector((
-                    base_color[0] * light_color[0],
-                    base_color[1] * light_color[1],
-                    base_color[2] * light_color[2]
+                    base_color[0] * light_color[0] * diff,
+                    base_color[1] * light_color[1] * diff,
+                    base_color[2] * light_color[2] * diff
                 ))
             
             elif light.type == 'SPOT':
@@ -315,7 +324,7 @@ class RENDER_PT_blender_internal(bpy.types.Panel):
         col = layout.column()
         col.label(text="Features:")
         col.label(text="- Basic material support")
-        col.label(text="- Diffuse and specular shading")
+        col.label(text="- Diffuse shading")
         col.label(text="- Point, Sun, and Spot lights")
         col.label(text="- Simple scanline rasterization")
 
