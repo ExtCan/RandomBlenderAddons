@@ -32,20 +32,6 @@ class ForceGPURenderOperator(bpy.types.Operator):
         user_prefs = context.user_preferences
         system = user_prefs.system
         
-        # Set compute device type to CUDA or OpenCL if available
-        # For Blender 2.79, we work with the display device
-        if hasattr(system, 'compute_device_type'):
-            # Try CUDA first, then OpenCL
-            available_types = []
-            try:
-                # Check what's available
-                if 'CUDA' in dir(system):
-                    available_types.append('CUDA')
-                if 'OPENCL' in dir(system):
-                    available_types.append('OPENCL')
-            except:
-                pass
-        
         # Enable OpenGL rendering and set window draw method
         system.use_mipmaps = True
         system.use_gpu_mipmap = True
@@ -127,8 +113,8 @@ class GPURenderPanel(bpy.types.Panel):
         # Show current settings
         box = layout.box()
         box.label(text="Current Settings:")
-        box.label(text=f"Engine: {scene.render.engine}")
-        box.label(text=f"Material Mode: {scene.game_settings.material_mode}")
+        box.label(text="Engine: {}".format(scene.render.engine))
+        box.label(text="Material Mode: {}".format(scene.game_settings.material_mode))
         
         layout.separator()
         
