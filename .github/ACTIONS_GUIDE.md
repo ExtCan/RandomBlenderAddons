@@ -20,10 +20,12 @@ Two GitHub Actions workflows have been added to automate testing and distributio
 - 4.0
 
 **What it does:**
-1. Clones Blender source for headers
-2. Attempts to build native engine (with continue-on-error)
-3. Packages addon as clean zip (without build artifacts)
-4. Uploads artifacts for 30 days
+1. Clones Blender source for headers and dependencies
+2. Attempts to build native C/C++ render engine
+3. If build succeeds, includes compiled module in artifact
+4. If build fails, continues with Python fallback only
+5. Packages addon as clean zip
+6. Uploads artifacts for 30 days
 
 **Triggers:**
 - Push to `main` or `copilot/add-blender-internal-render-addon`
@@ -95,10 +97,13 @@ Two GitHub Actions workflows have been added to automate testing and distributio
 Each artifact contains:
 - ✅ All UI modules (render, material, texture, world, lamp, render layer)
 - ✅ Python fallback renderer (works immediately)
-- ✅ Original C/C++ source code (for optional compilation)
+- ✅ Native C/C++ module (if build successful - check artifact size)
+- ✅ Original C/C++ source code (for optional manual compilation)
 - ✅ Build system (CMake + scripts)
 - ✅ Complete documentation (README, BUILD_GUIDE, etc.)
 - ✅ Test script
+
+**Note:** Artifacts that include a successfully built native module will be larger (~5-10MB vs ~2-3MB for Python-only).
 
 ## Artifact Retention
 
@@ -122,10 +127,12 @@ You can add these to README:
 - Red X indicates failure
 - Click for detailed error messages
 
-**Native build fails (expected):**
-- Build workflow has `continue-on-error: true` for native compilation
-- This is expected until translation layer is complete
-- Python fallback is always included
+**Native build status:**
+- Build workflow now attempts to compile the native C/C++ engine
+- If successful, the compiled module is included in the artifact
+- If it fails (due to missing Blender dependencies), continues with Python fallback
+- Check build logs for compilation details
+- Python fallback is always included as a working baseline
 
 **Artifact not found:**
 - Check workflow completed successfully (green checkmark)

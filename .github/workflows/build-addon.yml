@@ -42,10 +42,27 @@ jobs:
         cd blender_internal_render/engine_src
         mkdir -p build
         cd build
-        cmake .. \
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
           -DBLENDER_INCLUDE_DIR=${BLENDER_SOURCE}/source \
-          -DCMAKE_BUILD_TYPE=Release || echo "CMake configuration needs work - skipping native build"
-        # cmake --build . --config Release -j $(nproc) || echo "Build failed - expected for now"
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release -j $(nproc); then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.so" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.so || echo "No .so file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
       continue-on-error: true
     
     - name: Package addon
@@ -53,11 +70,19 @@ jobs:
         # Create a clean package without build artifacts
         mkdir -p package
         cp -r blender_internal_render package/
-        # Remove build directories and Python cache
-        rm -rf package/blender_internal_render/engine_src/build
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.so package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
         rm -rf package/blender_internal_render/__pycache__
         find package -name "*.pyc" -delete
         find package -name "__pycache__" -type d -delete
+        
         # Create zip in workspace root
         cd package
         zip -r ../blender_internal_render-linux-blender${{ matrix.blender_version }}.zip blender_internal_render
@@ -106,12 +131,29 @@ jobs:
         cd blender_internal_render/engine_src
         mkdir -p build
         cd build
-        cmake .. \
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
           -G "Visual Studio 17 2022" \
           -A x64 \
           -DBLENDER_INCLUDE_DIR="${BLENDER_SOURCE}/source" \
-          -DCMAKE_BUILD_TYPE=Release || echo "CMake configuration needs work - skipping native build"
-        # cmake --build . --config Release || echo "Build failed - expected for now"
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release; then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.pyd" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.pyd || echo "No .pyd file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
       continue-on-error: true
     
     - name: Package addon
@@ -120,11 +162,19 @@ jobs:
         # Create a clean package without build artifacts
         mkdir -p package
         cp -r blender_internal_render package/
-        # Remove build directories and Python cache
-        rm -rf package/blender_internal_render/engine_src/build
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.pyd package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
         rm -rf package/blender_internal_render/__pycache__
         find package -name "*.pyc" -delete
         find package -name "__pycache__" -type d -delete
+        
         # Create zip in workspace root
         cd package
         7z a -tzip ../blender_internal_render-windows-blender${{ matrix.blender_version }}.zip blender_internal_render
@@ -171,10 +221,27 @@ jobs:
         cd blender_internal_render/engine_src
         mkdir -p build
         cd build
-        cmake .. \
+        
+        echo "Attempting to build native render engine..."
+        if cmake .. \
           -DBLENDER_INCLUDE_DIR=${BLENDER_SOURCE}/source \
-          -DCMAKE_BUILD_TYPE=Release || echo "CMake configuration needs work - skipping native build"
-        # cmake --build . --config Release -j $(sysctl -n hw.ncpu) || echo "Build failed - expected for now"
+          -DCMAKE_BUILD_TYPE=Release; then
+          echo "CMake configuration successful"
+          
+          if cmake --build . --config Release -j $(sysctl -n hw.ncpu); then
+            echo "Build successful!"
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+            # Copy the built module to a known location
+            find . -name "blender_render_engine*.so" -exec cp {} ../../ \; || true
+            ls -la ../../blender_render_engine*.so || echo "No .so file found"
+          else
+            echo "Build failed - will use Python fallback only"
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "CMake configuration failed - will use Python fallback only"
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+        fi
       continue-on-error: true
     
     - name: Package addon
@@ -182,11 +249,19 @@ jobs:
         # Create a clean package without build artifacts
         mkdir -p package
         cp -r blender_internal_render package/
-        # Remove build directories and Python cache
-        rm -rf package/blender_internal_render/engine_src/build
+        
+        # If native build succeeded, include it
+        if [ "$BUILD_SUCCESS" = "true" ]; then
+          echo "Including native render engine module"
+          mkdir -p package/blender_internal_render/engine_src/build
+          cp blender_internal_render/blender_render_engine*.so package/blender_internal_render/engine_src/build/ 2>/dev/null || true
+        fi
+        
+        # Remove Python cache
         rm -rf package/blender_internal_render/__pycache__
         find package -name "*.pyc" -delete
         find package -name "__pycache__" -type d -delete
+        
         # Create zip in workspace root
         cd package
         zip -r ../blender_internal_render-macos-blender${{ matrix.blender_version }}.zip blender_internal_render
