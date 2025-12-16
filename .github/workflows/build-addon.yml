@@ -50,21 +50,22 @@ jobs:
     
     - name: Package addon
       run: |
-        cd blender_internal_render
         # Create a clean package without build artifacts
-        mkdir -p ../package
-        cp -r . ../package/blender_internal_render
-        # Remove build directories
-        rm -rf ../package/blender_internal_render/engine_src/build
-        rm -rf ../package/blender_internal_render/__pycache__
-        find ../package -name "*.pyc" -delete
-        find ../package -name "__pycache__" -type d -delete
-        # Create zip
-        cd ../package
+        mkdir -p package
+        cp -r blender_internal_render package/
+        # Remove build directories and Python cache
+        rm -rf package/blender_internal_render/engine_src/build
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        # Create zip in workspace root
+        cd package
         zip -r ../blender_internal_render-linux-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-linux-blender${{ matrix.blender_version }}.zip
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: blender-internal-render-linux-blender${{ matrix.blender_version }}
         path: blender_internal_render-linux-blender${{ matrix.blender_version }}.zip
@@ -116,21 +117,22 @@ jobs:
     - name: Package addon
       shell: bash
       run: |
-        cd blender_internal_render
         # Create a clean package without build artifacts
-        mkdir -p ../package
-        cp -r . ../package/blender_internal_render
-        # Remove build directories
-        rm -rf ../package/blender_internal_render/engine_src/build
-        rm -rf ../package/blender_internal_render/__pycache__
-        find ../package -name "*.pyc" -delete
-        find ../package -name "__pycache__" -type d -delete
-        # Create zip
-        cd ../package
+        mkdir -p package
+        cp -r blender_internal_render package/
+        # Remove build directories and Python cache
+        rm -rf package/blender_internal_render/engine_src/build
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        # Create zip in workspace root
+        cd package
         7z a -tzip ../blender_internal_render-windows-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-windows-blender${{ matrix.blender_version }}.zip
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: blender-internal-render-windows-blender${{ matrix.blender_version }}
         path: blender_internal_render-windows-blender${{ matrix.blender_version }}.zip
@@ -177,21 +179,22 @@ jobs:
     
     - name: Package addon
       run: |
-        cd blender_internal_render
         # Create a clean package without build artifacts
-        mkdir -p ../package
-        cp -r . ../package/blender_internal_render
-        # Remove build directories
-        rm -rf ../package/blender_internal_render/engine_src/build
-        rm -rf ../package/blender_internal_render/__pycache__
-        find ../package -name "*.pyc" -delete
-        find ../package -name "__pycache__" -type d -delete
-        # Create zip
-        cd ../package
+        mkdir -p package
+        cp -r blender_internal_render package/
+        # Remove build directories and Python cache
+        rm -rf package/blender_internal_render/engine_src/build
+        rm -rf package/blender_internal_render/__pycache__
+        find package -name "*.pyc" -delete
+        find package -name "__pycache__" -type d -delete
+        # Create zip in workspace root
+        cd package
         zip -r ../blender_internal_render-macos-blender${{ matrix.blender_version }}.zip blender_internal_render
+        cd ..
+        ls -lh blender_internal_render-macos-blender${{ matrix.blender_version }}.zip
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: blender-internal-render-macos-blender${{ matrix.blender_version }}
         path: blender_internal_render-macos-blender${{ matrix.blender_version }}.zip
@@ -252,7 +255,7 @@ jobs:
         cat ARTIFACTS_README.md
     
     - name: Upload release info
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ARTIFACTS_README
         path: ARTIFACTS_README.md
