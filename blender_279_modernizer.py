@@ -93,7 +93,7 @@ class OBJECT_OT_create_collection(Operator):
     def execute(self, context):
         # Create a new group (Collections equivalent in 2.79)
         bpy.data.groups.new(name=self.collection_name)
-        self.report({'INFO'}, f"Created collection: {self.collection_name}")
+        self.report({'INFO'}, "Created collection: {}".format(self.collection_name))
         return {'FINISHED'}
     
     def invoke(self, context, event):
@@ -131,7 +131,7 @@ class OBJECT_OT_add_to_collection(Operator):
                 group.objects.link(obj)
                 added_count += 1
         
-        self.report({'INFO'}, f"Added {added_count} object(s) to {self.collection_name}")
+        self.report({'INFO'}, "Added {} object(s) to {}".format(added_count, self.collection_name))
         return {'FINISHED'}
     
     def invoke(self, context, event):
@@ -164,7 +164,7 @@ class OBJECT_OT_remove_from_collection(Operator):
                 group.objects.unlink(obj)
                 removed_count += 1
         
-        self.report({'INFO'}, f"Removed {removed_count} object(s) from {self.collection_name}")
+        self.report({'INFO'}, "Removed {} object(s) from {}".format(removed_count, self.collection_name))
         return {'FINISHED'}
     
     def invoke(self, context, event):
@@ -207,7 +207,7 @@ class VIEW3D_PT_modern_collections(Panel):
                 row.label(text=group.name, icon='GROUP')
                 
                 # Show object count
-                row.label(text=f"({len(group.objects)})")
+                row.label(text="({})".format(len(group.objects)))
                 
                 # Add/Remove operators
                 op = row.operator("object.add_to_collection", text="", icon='ZOOMIN')
@@ -222,7 +222,7 @@ class VIEW3D_PT_modern_collections(Panel):
         if context.selected_objects:
             layout.separator()
             box = layout.box()
-            box.label(text=f"Selected: {len(context.selected_objects)} object(s)")
+            box.label(text="Selected: {} object(s)".format(len(context.selected_objects)))
 
 
 # ============================================================================
