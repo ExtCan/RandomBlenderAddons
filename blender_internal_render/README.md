@@ -59,20 +59,36 @@ Legend: ✅ Complete | 🔄 In Progress | ❌ Not Yet Started
 
 ## Installation
 
-### Quick Install (Python Fallback Only)
+### Option 1: Download Pre-Built Artifacts (Easiest)
 
-1. Download the `blender_internal_render` folder
-2. Copy it to your Blender addons directory:
-   - **Linux**: `~/.config/blender/3.x/scripts/addons/`
-   - **macOS**: `/Users/USER/Library/Application Support/Blender/3.x/scripts/addons/`
-   - **Windows**: `C:\Users\USER\AppData\Roaming\Blender Foundation\Blender\3.x\scripts\addons\`
+Pre-built packages are available from GitHub Actions for easy testing:
+
+1. Go to the [GitHub Actions page](https://github.com/ExtCan/RandomBlenderAddons/actions)
+2. Click on the latest successful workflow run
+3. Download the artifact for your platform and Blender version:
+   - `blender-internal-render-linux-blenderX.X`
+   - `blender-internal-render-windows-blenderX.X`
+   - `blender-internal-render-macos-blenderX.X`
+4. Extract the zip file
+5. Copy the `blender_internal_render` folder to your Blender addons directory:
+   - **Linux**: `~/.config/blender/X.X/scripts/addons/`
+   - **macOS**: `~/Library/Application Support/Blender/X.X/scripts/addons/`
+   - **Windows**: `%APPDATA%\Blender Foundation\Blender\X.X\scripts\addons\`
+6. Open Blender → Edit → Preferences → Add-ons
+7. Search for "Blender Internal"
+8. Enable the addon
+
+### Option 2: Quick Install from Source (Python Fallback Only)
+
+1. Download the `blender_internal_render` folder from this repository
+2. Copy it to your Blender addons directory (see paths above)
 3. Open Blender → Edit → Preferences → Add-ons
 4. Search for "Blender Internal"
 5. Enable the addon
 
 This will give you the UI panels and a Python-based render engine.
 
-### Building the Native Engine (Best Performance)
+### Option 3: Building the Native Engine (Best Performance)
 
 To get full performance with the original C/C++ render engine, you need to compile it.
 
