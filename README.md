@@ -1,5 +1,8 @@
 # Random Blender Addons
 
+![Build Status](https://github.com/ExtCan/RandomBlenderAddons/actions/workflows/build-addon.yml/badge.svg)
+![Test Status](https://github.com/ExtCan/RandomBlenderAddons/actions/workflows/test-addon.yml/badge.svg)
+
 A collection of useful Blender addons.
 
 ## Available Addons
@@ -12,6 +15,10 @@ Imports images as colored cubes, best used with sprites. Make sure when you sepa
 
 ### 3. Blender Internal Render Engine
 Restores the Blender Internal (BI) render engine from Blender 2.79 to modern Blender versions using a translation layer.
+
+**Quick Start:**
+- 📦 **Download pre-built artifacts** from [GitHub Actions](https://github.com/ExtCan/RandomBlenderAddons/actions) (easiest way to test)
+- 📥 Install from source or build native engine for best performance
 
 **Features:**
 - Original C/C++ render engine code with translation layer
